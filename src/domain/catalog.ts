@@ -45,7 +45,8 @@ export const products: Record<string, Product> = {
       { name: 'Bleu', hex: '#2f7be5' },
       { name: 'Noir', hex: '#1c1c1e' },
     ],
-    tint: '#3fc5b5',
+    tint: '#f7e4a0',
+    image: require('../../assets/products/jbl-go-3.jpg') as number,
     description:
       'Son JBL Pro puissant, 5 h d’autonomie, résistant à l’eau et à la poussière. Livraison à Kinshasa en 24 à 48 h.',
   },
@@ -62,7 +63,8 @@ export const products: Record<string, Product> = {
       { name: 'Bleu', hex: '#2f7be5' },
       { name: 'Noir', hex: '#1c1c1e' },
     ],
-    tint: '#9aa4ad',
+    tint: '#cddcf6',
+    image: require('../../assets/products/jbl-charge-5.jpg') as number,
     description: 'Basses profondes, batterie 20 h qui recharge aussi ton téléphone. Étanche IP67.',
   },
   'jbl-tune-510': {
@@ -78,7 +80,8 @@ export const products: Record<string, Product> = {
       { name: 'Noir', hex: '#1c1c1e' },
       { name: 'Blanc', hex: '#f2f2f2' },
     ],
-    tint: '#1d1d1f',
+    tint: '#e2e2e6',
+    image: require('../../assets/products/jbl-tune-510.jpg') as number,
     description: 'Casque pliable, 40 h d’autonomie, charge rapide 5 min = 2 h d’écoute.',
   },
   'earbuds-pro': {
@@ -91,7 +94,8 @@ export const products: Record<string, Product> = {
     rating: 4.3,
     reviews: 41,
     colors: [{ name: 'Orange', hex: '#fb7800' }],
-    tint: '#e9651f',
+    tint: '#fad3ad',
+    image: require('../../assets/products/earbuds-pro.jpg') as number,
     description: 'Réduction de bruit, boîtier de charge 24 h.',
   },
 };
