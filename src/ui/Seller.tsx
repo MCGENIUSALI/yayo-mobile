@@ -193,9 +193,9 @@ export function SwitchRow({ title, subtitle, value, onChange }: { title: string;
 /* ---------- Photos (V1 logo, V2 pièces, V9 photos produit) ---------- */
 
 /**
- * Demo gallery: Expo Go cannot add the native image picker without a new build
- * from this environment, so "Ajouter" picks one of the demo pictures. The real
- * picker (expo-image-picker, camera + gallery) plugs into `onPick`.
+ * Demo gallery: "Ajouter" picks one of the demo pictures until expo-image-picker
+ * (camera + gallery, supported by Expo Go) is added to the project; it plugs
+ * into `onPick`.
  */
 const DEMO_GALLERY: Photo[] = Object.values(products)
   .map((p) => p.image)
