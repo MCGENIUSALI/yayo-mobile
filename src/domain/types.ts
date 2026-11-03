@@ -40,7 +40,17 @@ export interface Shop {
   category?: string;
   /** Local require() of the shop's profile photo. */
   avatar?: number;
+  /** Shop rating as shown on B5; computed from its products when absent. */
+  rating?: number;
+  reviews?: number;
+  /** One-line description on B5, e.g. "Électronique et audio". */
+  tagline?: string;
+  /** Cash on delivery accepted (B3 filter "Paiement à la livraison"). */
+  acceptsCash?: boolean;
 }
+
+/** Top-level universe a product belongs to (E3 · Catégories). */
+export type Department = 'electronique' | 'mode' | 'beaute' | 'maison';
 
 export interface ColorOption {
   name: string;
@@ -63,6 +73,9 @@ export interface Product {
   /** Local require() or remote URI. Optional until real catalogue photos are provided. */
   image?: number | string;
   description: string;
+  department: Department;
+  /** Product family, used for shop tabs (B5) and search, e.g. "Enceintes". */
+  family: string;
 }
 
 export interface CartLine {

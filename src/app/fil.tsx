@@ -247,7 +247,7 @@ function VideoPage({
       <View style={[styles.rail, { bottom: insets.bottom + 168 }]}>
         <PressableScale
           accessibilityLabel={`Boutique ${shop.name}`}
-          onPress={() => toast('La page boutique arrive bientôt (B5).')}
+          onPress={() => router.push({ pathname: '/boutique/[id]', params: { id: shop.id } })}
           scaleTo={pressScale.icon}
           style={{ marginBottom: space.sm }}
         >

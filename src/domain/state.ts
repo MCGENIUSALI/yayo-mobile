@@ -1,6 +1,7 @@
 import { getProduct } from './catalog';
 import { applyOrderEvent, receiptCodeFor, type OrderEvent } from './orderMachine';
 import { detectOperator } from './paymentProvider';
+import { rememberQuery } from './search';
 import { summarizeCart, splitDiscount } from './pricing';
 import type {
   CartLine,
@@ -11,7 +12,7 @@ import type {
   PaymentMethod,
 } from './types';
 
-export const STATE_VERSION = 2;
+export const STATE_VERSION = 3;
 
 /** Mobile Money request lifetime shown on C4 ("La demande expire dans 01:45"). */
 export const MOMO_REQUEST_TTL_MS = 105_000;
@@ -31,9 +32,14 @@ export interface SocialState {
   saved: string[];
   reposted: string[];
   following: string[];
+  /** Product favourites (heart on B2, B4, B5). */
+  wishlist: string[];
 }
 
-export type SocialToggle = 'liked' | 'saved' | 'reposted' | 'following';
+export type SocialToggle = 'liked' | 'saved' | 'reposted' | 'following' | 'wishlist';
+
+/** Recent searches seeded from Figma E4. */
+export const SEED_RECENT_SEARCHES = ['Chaussures sport', 'JBL Go 3'];
 
 export interface AppState {
   version: number;
@@ -48,6 +54,8 @@ export interface AppState {
   events: DomainEvent[];
   /** Buyer's social state on the discovery feed (SC1–SC3). */
   social: SocialState;
+  /** Explorer: recent searches, most recent first (E4). */
+  search: { recent: string[] };
   /** Last rejected action, for UI feedback. Never persisted as business state. */
   lastError?: { code: string; message: string; at: string };
 }
@@ -58,6 +66,8 @@ export type Action =
   | { type: 'cart/remove'; productId: string; color: string; at: string }
   | { type: 'draft/update'; patch: Partial<CheckoutDraft> }
   | { type: 'social/toggle'; list: SocialToggle; id: string; at: string }
+  | { type: 'search/remember'; query: string; at: string }
+  | { type: 'search/clearRecent'; at: string }
   | { type: 'checkout/pay'; at: string }
   | {
       type: 'checkout/providerResult';
@@ -141,8 +151,29 @@ export function createInitialState(now: string): AppState {
     orderSeq: 24868,
     checkoutSeq: 1,
     events: [{ id: 'EV-1', at: now, actor: 'system', type: 'demo.seeded' }],
-    social: { liked: [], saved: [], reposted: [], following: ['mama-luka-mode'] },
+    social: { liked: [], saved: [], reposted: [], following: ['mama-luka-mode'], wishlist: [] },
+    search: { recent: [...SEED_RECENT_SEARCHES] },
   };
+}
+
+/**
+ * Restores a persisted session. Older versions are upgraded instead of wiped,
+ * so an update never empties the buyer's cart or loses a pending order.
+ */
+export function restoreState(saved: unknown, now: string): AppState {
+  const s = saved as Partial<AppState> | null;
+  if (!s || typeof s !== 'object' || typeof s.version !== 'number') return createInitialState(now);
+  if (s.version === STATE_VERSION) return { ...(s as AppState), lastError: undefined };
+  if (s.version === 2 && s.social) {
+    return {
+      ...(s as AppState),
+      version: STATE_VERSION,
+      social: { ...s.social, wishlist: [] },
+      search: { recent: [...SEED_RECENT_SEARCHES] },
+      lastError: undefined,
+    };
+  }
+  return createInitialState(now);
 }
 
 /** Pure reducer: the only place where business state changes. */
@@ -193,6 +224,14 @@ export function reducer(state: AppState, action: Action): AppState {
         events: log(state, { at: action.at, actor: 'buyer', type: `social.${action.list}.${on ? 'on' : 'off'}`, detail: action.id }),
       };
     }
+
+    case 'search/remember': {
+      const recent = rememberQuery(state.search.recent, action.query);
+      if (recent.join('\n') === state.search.recent.join('\n')) return state;
+      return { ...state, search: { recent } };
+    }
+    case 'search/clearRecent':
+      return state.search.recent.length ? { ...state, search: { recent: [] } } : state;
 
     case 'checkout/pay':
       return pay(state, action.at);

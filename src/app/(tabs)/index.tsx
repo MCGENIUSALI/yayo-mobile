@@ -27,6 +27,7 @@ import { getShop, products } from '@/domain/catalog';
 import { formatCount, posts } from '@/domain/feed';
 import { formatFC } from '@/domain/money';
 import { socialCount, type SocialToggle } from '@/domain/state';
+import type { CategoryId } from '@/domain/search';
 import type { Post, Product } from '@/domain/types';
 import { useStore } from '@/store/AppStore';
 import { duration, pressScale, spring } from '@/theme/motion';
@@ -40,19 +41,18 @@ import { FollowButton, ProductTag, sharePost, ShopAvatar } from '@/ui/Social';
 import { Badge } from '@/ui/Status';
 import { Text } from '@/ui/Text';
 
-const CATEGORIES: { label: string; icon: LucideIcon }[] = [
-  { label: 'Mode', icon: Shirt },
-  { label: 'Électro', icon: Smartphone },
-  { label: 'Beauté', icon: Sparkles },
-  { label: 'Maison', icon: House },
-  { label: 'Promo', icon: Tag },
+const CATEGORIES: { label: string; icon: LucideIcon; id: CategoryId }[] = [
+  { label: 'Mode', icon: Shirt, id: 'mode' },
+  { label: 'Électro', icon: Smartphone, id: 'electronique' },
+  { label: 'Beauté', icon: Sparkles, id: 'beaute' },
+  { label: 'Maison', icon: House, id: 'maison' },
+  { label: 'Promo', icon: Tag, id: 'promos' },
 ];
 
 /** B1 · Accueil: search, categories, promo, shop feed, then the catalogue grid. */
 export default function Home() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const toast = useToast();
   const [sheetProduct, setSheetProduct] = useState<string | null>(null);
   const cardW = (width - space.screen * 2 - space.md) / 2;
   const grid = Object.values(products);
@@ -93,7 +93,7 @@ export default function Home() {
               <PressableScale
                 accessibilityRole="search"
                 accessibilityLabel="Rechercher un produit, une boutique"
-                onPress={() => router.navigate('/explorer')}
+                onPress={() => router.navigate({ pathname: '/explorer', params: { focus: String(Date.now()) } })}
                 scaleTo={pressScale.card}
                 style={styles.search}
               >
@@ -108,12 +108,12 @@ export default function Home() {
             </View>
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categories}>
-              {CATEGORIES.map(({ label, icon: Icon }) => (
+              {CATEGORIES.map(({ label, icon: Icon, id }) => (
                 <PressableScale
                   key={label}
                   accessibilityRole="button"
                   accessibilityLabel={`Catégorie ${label}`}
-                  onPress={() => toast(`La catégorie ${label} arrive avec l’Explorer (E3).`)}
+                  onPress={() => router.navigate({ pathname: '/explorer', params: { cat: id, q: '' } })}
                   haptic="selection"
                   scaleTo={pressScale.icon}
                   style={styles.category}
@@ -231,15 +231,23 @@ function FeedPost({ post, width, onBuy }: { post: Post; width: number; onBuy: (p
   return (
     <View style={styles.post}>
       <View style={styles.postHead}>
-        <ShopAvatar shop={shop} size={40} />
-        <View style={styles.flex}>
-          <Text variant="labelL" numberOfLines={1}>
-            {shop.name}
-          </Text>
-          <Text variant="bodyS" color={color.text.secondary} numberOfLines={1}>
-            {shop.category ?? 'Boutique'} · {shop.area}
-          </Text>
-        </View>
+        <PressableScale
+          accessibilityRole="link"
+          accessibilityLabel={`Boutique ${shop.name}, ${shop.category ?? 'Boutique'}, ${shop.area}`}
+          onPress={() => router.push({ pathname: '/boutique/[id]', params: { id: shop.id } })}
+          scaleTo={pressScale.card}
+          style={styles.postShop}
+        >
+          <ShopAvatar shop={shop} size={40} />
+          <View style={styles.flex}>
+            <Text variant="labelL" numberOfLines={1}>
+              {shop.name}
+            </Text>
+            <Text variant="bodyS" color={color.text.secondary} numberOfLines={1}>
+              {shop.category ?? 'Boutique'} · {shop.area}
+            </Text>
+          </View>
+        </PressableScale>
         <FollowButton shopId={shop.id} />
         <PressableScale accessibilityLabel="Plus d’options" onPress={() => toast('Options : signaler, masquer (bientôt).')} scaleTo={pressScale.icon} style={styles.more}>
           <MoreHorizontal size={22} color={color.icon.primary} strokeWidth={2} />
@@ -433,6 +441,7 @@ const styles = StyleSheet.create({
   link: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   post: { backgroundColor: color.bg.surface, paddingTop: space.md, paddingBottom: space.md, gap: space.sm },
   postHead: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.lg },
+  postShop: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: space.md },
   more: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
   media: { backgroundColor: color.bg.surfaceSunken, overflow: 'hidden' },
   counter: {

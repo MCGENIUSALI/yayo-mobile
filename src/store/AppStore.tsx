@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useState, type ReactNode } from 'react';
 import { AppState as RNAppState } from 'react-native';
 import { decidePayment } from '@/domain/paymentProvider';
-import { createInitialState, reducer, STATE_VERSION, type Action, type AppState } from '@/domain/state';
+import { createInitialState, reducer, restoreState, type Action, type AppState } from '@/domain/state';
 
 const STORAGE_KEY = 'yayo/demo-state';
 
@@ -26,8 +26,7 @@ export function AppStoreProvider({ children, fallback }: { children: ReactNode; 
     let cancelled = false;
     AsyncStorage.getItem(STORAGE_KEY)
       .then((raw) => {
-        const parsed = raw ? (JSON.parse(raw) as AppState) : null;
-        const initial = parsed?.version === STATE_VERSION ? { ...parsed, lastError: undefined } : createInitialState(new Date().toISOString());
+        const initial = restoreState(raw ? JSON.parse(raw) : null, new Date().toISOString());
         if (!cancelled) setBoot({ phase: 'ready', initial });
       })
       .catch(() => {
