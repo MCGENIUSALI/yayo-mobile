@@ -34,6 +34,12 @@ export interface Shop {
   area: string;
   verified: boolean;
   deliveryLead: string;
+  /** Social handle shown on posts (without @). */
+  handle?: string;
+  /** Shop category shown on posts, e.g. "Électronique". */
+  category?: string;
+  /** Local require() of the shop's profile photo. */
+  avatar?: number;
 }
 
 export interface ColorOption {
@@ -162,4 +168,29 @@ export interface DomainEvent {
   orderId?: string;
   checkoutId?: string;
   detail?: string;
+}
+
+/* ---------- Social commerce (SC1–SC3) ---------- */
+
+export type PostKind = 'video' | 'photo';
+
+export interface Post {
+  id: string;
+  kind: PostKind;
+  shopId: string;
+  caption: string;
+  /** Video: local require() of the clip. Photo: unused. */
+  video?: number;
+  /** Images shown in the home feed card (carousel for photos, cover for videos). */
+  media: number[];
+  /** Video: first frame, shown while the clip loads. */
+  poster?: number;
+  /** Products tagged in the post, first one is featured. */
+  productIds: string[];
+  /** Counts before the current buyer's own like / save / repost. */
+  likes: number;
+  comments: number;
+  saves: number;
+  reposts: number;
+  createdAt: string;
 }

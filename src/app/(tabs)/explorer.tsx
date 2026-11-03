@@ -7,7 +7,7 @@ import { HeroIcon } from '@/ui/Feedback';
 import { LargeTitleBar } from '@/ui/TopAppBar';
 import { Text } from '@/ui/Text';
 
-/** Explorer (B2/B3/E3–E5) is part of the P1 discovery increment. No dead end meanwhile. */
+/** Explorer (B2/B3/E3–E5) is the next increment. No dead end meanwhile. */
 export default function ExplorerScreen() {
   return (
     <View style={styles.screen}>
@@ -18,8 +18,9 @@ export default function ExplorerScreen() {
           Recherche et catégories
         </Text>
         <Text variant="bodyM" color={color.text.secondary} align="center">
-          La recherche avec filtres arrive avec le fil de découverte. En attendant, retrouve la sélection du moment sur l’accueil.
+          La recherche avec filtres arrive bientôt. En attendant, découvre les vidéos des boutiques ou la sélection du moment.
         </Text>
+        <Button label="Voir le fil vidéo" onPress={() => router.push('/fil')} />
         <Button label="Voir la sélection" variant="outline" onPress={() => router.navigate('/')} />
       </View>
     </View>

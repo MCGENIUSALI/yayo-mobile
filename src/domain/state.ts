@@ -11,7 +11,7 @@ import type {
   PaymentMethod,
 } from './types';
 
-export const STATE_VERSION = 1;
+export const STATE_VERSION = 2;
 
 /** Mobile Money request lifetime shown on C4 ("La demande expire dans 01:45"). */
 export const MOMO_REQUEST_TTL_MS = 105_000;
@@ -26,6 +26,15 @@ export interface CheckoutDraft {
   msisdn: string;
 }
 
+export interface SocialState {
+  liked: string[];
+  saved: string[];
+  reposted: string[];
+  following: string[];
+}
+
+export type SocialToggle = 'liked' | 'saved' | 'reposted' | 'following';
+
 export interface AppState {
   version: number;
   cart: CartLine[];
@@ -37,6 +46,8 @@ export interface AppState {
   checkoutSeq: number;
   activeCheckoutId?: string;
   events: DomainEvent[];
+  /** Buyer's social state on the discovery feed (SC1–SC3). */
+  social: SocialState;
   /** Last rejected action, for UI feedback. Never persisted as business state. */
   lastError?: { code: string; message: string; at: string };
 }
@@ -46,6 +57,7 @@ export type Action =
   | { type: 'cart/setQty'; productId: string; color: string; qty: number; at: string }
   | { type: 'cart/remove'; productId: string; color: string; at: string }
   | { type: 'draft/update'; patch: Partial<CheckoutDraft> }
+  | { type: 'social/toggle'; list: SocialToggle; id: string; at: string }
   | { type: 'checkout/pay'; at: string }
   | {
       type: 'checkout/providerResult';
@@ -129,6 +141,7 @@ export function createInitialState(now: string): AppState {
     orderSeq: 24868,
     checkoutSeq: 1,
     events: [{ id: 'EV-1', at: now, actor: 'system', type: 'demo.seeded' }],
+    social: { liked: [], saved: [], reposted: [], following: ['mama-luka-mode'] },
   };
 }
 
@@ -170,6 +183,16 @@ export function reducer(state: AppState, action: Action): AppState {
       };
     case 'draft/update':
       return { ...state, draft: { ...state.draft, ...action.patch } };
+
+    case 'social/toggle': {
+      const list = state.social[action.list];
+      const on = !list.includes(action.id);
+      return {
+        ...state,
+        social: { ...state.social, [action.list]: on ? [...list, action.id] : list.filter((x) => x !== action.id) },
+        events: log(state, { at: action.at, actor: 'buyer', type: `social.${action.list}.${on ? 'on' : 'off'}`, detail: action.id }),
+      };
+    }
 
     case 'checkout/pay':
       return pay(state, action.at);
@@ -426,4 +449,9 @@ export function addToCartError(state: AppState, productId: string, color: string
   const inCart = state.cart.find((l) => sameLine(l, productId, color))?.qty ?? 0;
   if (inCart + qty > product.stock) return `Il ne reste que ${product.stock} en stock.`;
   return null;
+}
+
+/** Count shown on a post, including the buyer's own action. */
+export function socialCount(base: number, active: boolean): number {
+  return base + (active ? 1 : 0);
 }

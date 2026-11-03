@@ -53,6 +53,7 @@ export default function RootLayout() {
               <Stack.Screen name="achat/confirmee" options={{ gestureEnabled: false, animation: 'fade_from_bottom' }} />
               <Stack.Screen name="achat/echec" options={{ gestureEnabled: false, animation: 'fade_from_bottom' }} />
               <Stack.Screen name="suivi/[id]" />
+              <Stack.Screen name="fil" options={{ animation: 'fade', contentStyle: { backgroundColor: '#000' } }} />
             </Stack>
           </AppStoreProvider>
         </ToastProvider>
