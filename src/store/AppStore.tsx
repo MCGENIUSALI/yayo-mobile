@@ -6,8 +6,8 @@ import { createInitialState, reducer, restoreState, type Action, type AppState }
 
 const STORAGE_KEY = 'yayo/demo-state';
 
-/** Actions as dispatched by screens: the store stamps the time. */
-type Timed<A> = A extends { at: string } ? Omit<A, 'at'> : A;
+/** Actions as dispatched by screens: the store stamps the time unless one is given. */
+type Timed<A> = A extends { at: string } ? Omit<A, 'at'> & { at?: string } : A;
 export type StoreAction = Timed<Action>;
 
 interface Store {
@@ -45,10 +45,11 @@ function StoreRuntime({ initial, children }: { initial: AppState; children: Reac
   const [state, rawDispatch] = useReducer(reducer, initial);
 
   const dispatch = useCallback((action: StoreAction) => {
-    rawDispatch({ ...action, at: new Date().toISOString() } as Action);
+    rawDispatch({ ...action, at: (action as { at?: string }).at ?? new Date().toISOString() } as Action);
   }, []);
 
   usePersistence(state);
+  useSessionCheck(rawDispatch);
   usePaymentProvider(state, rawDispatch);
 
   const value = useMemo(() => ({ state, dispatch }), [state, dispatch]);
@@ -111,6 +112,17 @@ function usePaymentProvider(state: AppState, dispatch: (a: Action) => void) {
     // pendingKey captures id + attempt + status; the reducer also drops stale results.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingKey, foregroundTick, dispatch]);
+}
+
+/** Re-checks the session (idle/absolute expiry, suspension) at launch and on each return to the foreground. */
+function useSessionCheck(dispatch: (a: Action) => void) {
+  useEffect(() => {
+    dispatch({ type: 'auth/touch', at: new Date().toISOString() });
+    const sub = RNAppState.addEventListener('change', (s) => {
+      if (s === 'active') dispatch({ type: 'auth/touch', at: new Date().toISOString() });
+    });
+    return () => sub.remove();
+  }, [dispatch]);
 }
 
 export function useStore(): Store {

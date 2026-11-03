@@ -1,3 +1,4 @@
+import { authReduce, createAuthState, type AuthAction, type AuthState } from './auth';
 import { getProduct } from './catalog';
 import { applyOrderEvent, receiptCodeFor, type OrderEvent } from './orderMachine';
 import { detectOperator } from './paymentProvider';
@@ -12,7 +13,7 @@ import type {
   PaymentMethod,
 } from './types';
 
-export const STATE_VERSION = 3;
+export const STATE_VERSION = 4;
 
 /** Mobile Money request lifetime shown on C4 ("La demande expire dans 01:45"). */
 export const MOMO_REQUEST_TTL_MS = 105_000;
@@ -56,6 +57,8 @@ export interface AppState {
   social: SocialState;
   /** Explorer: recent searches, most recent first (E4). */
   search: { recent: string[] };
+  /** US-01: accounts, OTP challenge and session (mock, see auth.ts). */
+  auth: AuthState;
   /** Last rejected action, for UI feedback. Never persisted as business state. */
   lastError?: { code: string; message: string; at: string };
 }
@@ -68,6 +71,7 @@ export type Action =
   | { type: 'social/toggle'; list: SocialToggle; id: string; at: string }
   | { type: 'search/remember'; query: string; at: string }
   | { type: 'search/clearRecent'; at: string }
+  | (AuthAction & { at?: string })
   | { type: 'checkout/pay'; at: string }
   | {
       type: 'checkout/providerResult';
@@ -153,6 +157,7 @@ export function createInitialState(now: string): AppState {
     events: [{ id: 'EV-1', at: now, actor: 'system', type: 'demo.seeded' }],
     social: { liked: [], saved: [], reposted: [], following: ['mama-luka-mode'], wishlist: [] },
     search: { recent: [...SEED_RECENT_SEARCHES] },
+    auth: createAuthState(),
   };
 }
 
@@ -164,12 +169,14 @@ export function restoreState(saved: unknown, now: string): AppState {
   const s = saved as Partial<AppState> | null;
   if (!s || typeof s !== 'object' || typeof s.version !== 'number') return createInitialState(now);
   if (s.version === STATE_VERSION) return { ...(s as AppState), lastError: undefined };
-  if (s.version === 2 && s.social) {
+  if ((s.version === 2 || s.version === 3) && s.social) {
     return {
       ...(s as AppState),
       version: STATE_VERSION,
-      social: { ...s.social, wishlist: [] },
-      search: { recent: [...SEED_RECENT_SEARCHES] },
+      social: { ...s.social, wishlist: s.social.wishlist ?? [] },
+      search: s.search ?? { recent: [...SEED_RECENT_SEARCHES] },
+      // Sessions did not exist before v4: the buyer signs in once.
+      auth: createAuthState(),
       lastError: undefined,
     };
   }
@@ -178,6 +185,7 @@ export function restoreState(saved: unknown, now: string): AppState {
 
 /** Pure reducer: the only place where business state changes. */
 export function reducer(state: AppState, action: Action): AppState {
+  if (action.type.startsWith('auth/')) return reduceAuth(state, action as AuthAction & { at?: string });
   switch (action.type) {
     case 'cart/add': {
       const product = getProduct(action.productId);
@@ -321,8 +329,24 @@ export function reducer(state: AppState, action: Action): AppState {
     }
 
     case 'demo/reset':
-      return createInitialState(action.at);
+      // Resets the shopping demo, not the buyer's account or session.
+      return { ...createInitialState(action.at), auth: state.auth };
+    default:
+      return state;
   }
+}
+
+function reduceAuth(state: AppState, action: AuthAction & { at?: string }): AppState {
+  const r = authReduce(state.auth, action);
+  const at = action.at ?? '';
+  if (!r.ok) return { ...state, auth: r.auth ?? state.auth, lastError: { code: r.code, message: r.message, at } };
+  return {
+    ...state,
+    auth: r.auth,
+    lastError: undefined,
+    // Security log: event type only, never the phone, e-mail or code (same rule as the dashboard).
+    events: r.event ? log(state, { at, actor: 'buyer', type: r.event }) : state.events,
+  };
 }
 
 function pay(state: AppState, at: string): AppState {

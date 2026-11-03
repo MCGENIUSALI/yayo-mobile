@@ -1,11 +1,14 @@
 import { ChevronDown, type LucideIcon } from 'lucide-react-native';
 import { useState, type ReactNode } from 'react';
-import { StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
+import { Platform, StyleSheet, TextInput, View, type TextInputProps, type TextStyle } from 'react-native';
 import Animated, { useAnimatedStyle, useReducedMotion, withSpring, withTiming } from 'react-native-reanimated';
 import { duration, pressScale, spring } from '@/theme/motion';
 import { color, radius, space, type as typeScale } from '@/theme/tokens';
 import { PressableScale } from './Pressable';
 import { Text } from './Text';
+
+/** react-native-web draws its own focus outline inside the field; the field border shows focus. */
+const noWebOutline = (Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) as TextStyle;
 
 /* ---------- Selection Control · Radio (996:308) ---------- */
 
@@ -162,7 +165,7 @@ export function TextField({
             setFocused(false);
             input.onBlur?.(e);
           }}
-          style={[typeScale.bodyL, styles.input]}
+          style={[typeScale.bodyL, styles.input, noWebOutline]}
         />
       </View>
       {error ? (

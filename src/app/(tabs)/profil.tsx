@@ -1,5 +1,6 @@
-import { RotateCcw } from 'lucide-react-native';
+import { LogOut, RotateCcw } from 'lucide-react-native';
 import { ScrollView, StyleSheet, View } from 'react-native';
+import { currentAccount, displayTarget, initialsOf } from '@/domain/auth';
 import { confirmedOrders } from '@/domain/state';
 import { useStore } from '@/store/AppStore';
 import { color, radius, space } from '@/theme/tokens';
@@ -7,6 +8,7 @@ import { Button } from '@/ui/Button';
 import { Avatar } from '@/ui/Commerce';
 import { useToast } from '@/ui/Feedback';
 import { Card } from '@/ui/Layout';
+import { Badge } from '@/ui/Status';
 import { Text } from '@/ui/Text';
 import { LargeTitleBar } from '@/ui/TopAppBar';
 
@@ -22,22 +24,40 @@ export default function ProfileScreen() {
   const { state, dispatch } = useStore();
   const toast = useToast();
   const orders = confirmedOrders(state).length;
+  const account = currentAccount(state.auth);
+  const pendingLabel = { seller: 'Vendeur', courier: 'Livreur', buyer: 'Acheteur', admin: 'Admin' } as const;
   return (
     <View style={styles.screen}>
       <LargeTitleBar title="Profil" />
       <ScrollView contentContainerStyle={styles.content}>
         <Card>
           <View style={styles.row}>
-            <Avatar initials="GM" />
+            <Avatar initials={initialsOf(account?.name ?? '?')} />
             <View style={{ flex: 1 }}>
-              <Text variant="labelL">Grâce M.</Text>
+              <Text variant="labelL">{account?.name ?? 'Invité'}</Text>
               <Text variant="bodyS" color={color.text.secondary}>
-                +243 81 234 5678 · Kalamu, Kinshasa
+                {account?.phone ? displayTarget('phone', account.phone) : account?.email ? displayTarget('email', account.email) : ''} · {account?.commune},{' '}
+                {account?.city}
               </Text>
             </View>
           </View>
+          {account?.pendingRoles.length ? (
+            <View style={styles.badges}>
+              {account.pendingRoles.map((r) => (
+                <Badge key={r} label={`${pendingLabel[r]} · en attente de validation`} tone="warning" />
+              ))}
+            </View>
+          ) : null}
           <Text variant="bodyS" color={color.text.secondary}>
             {orders} commande{orders > 1 ? 's' : ''} · {state.events.length} événements enregistrés
+          </Text>
+        </Card>
+
+        <Card>
+          <Text variant="labelL">Connexion (démo)</Text>
+          <Text variant="bodyS" color={color.text.secondary}>
+            Le code s’affiche sur l’écran de vérification. 81 234 5678 ouvre le compte de Jean Mukendi, 85 000 0000 un compte suspendu ; tout
+            autre numéro crée un nouveau compte.
           </Text>
         </Card>
 
@@ -70,6 +90,14 @@ export default function ProfileScreen() {
           }}
           fill
         />
+        <Button
+          label="Se déconnecter"
+          variant="outline"
+          leadingIcon={LogOut}
+          haptic="selection"
+          onPress={() => dispatch({ type: 'auth/signOut' })}
+          fill
+        />
       </ScrollView>
     </View>
   );
@@ -79,6 +107,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: color.bg.canvas },
   content: { padding: space.screen, gap: space.lg },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+  badges: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   scenario: {
     flexDirection: 'row',
     alignItems: 'center',
