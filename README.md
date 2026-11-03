@@ -12,6 +12,10 @@ npx expo start
 
 Scanne le QR code avec Expo Go, ou ouvre un simulateur iOS / Android.
 
+## Aperçu web (Vercel)
+
+`vercel.json` construit la version web (`npx expo export -p web`, dossier `dist`). Importer le dépôt dans Vercel suffit : chaque branche reçoit un lien d'aperçu à ouvrir dans Safari ou Chrome. La version web sert à parcourir les écrans ; l'haptique et le comportement natif se vérifient dans Expo Go.
+
 ## Vérifier
 
 ```
