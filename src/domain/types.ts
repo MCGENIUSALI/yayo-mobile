@@ -144,6 +144,10 @@ export interface Order {
   addressId: string;
   slotId: string;
   courierNote?: string;
+  /** Buyer account that paid (filters "Mes commandes"); absent for orders from outside the demo. */
+  buyerId?: string;
+  /** What the seller sees on V5/V6: first name + initial and commune, never the phone (V6). */
+  buyer?: { name: string; commune: string };
   courier?: Courier;
   cashCollected?: boolean;
   milestones: OrderMilestones;

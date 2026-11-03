@@ -24,7 +24,8 @@ import { Text } from './Text';
 export interface SearchFieldProps extends Omit<TextInputProps, 'style'> {
   value: string;
   onChangeText: (v: string) => void;
-  onFilter: () => void;
+  /** Filter button (hidden when absent). */
+  onFilter?: () => void;
   /** Number of active filters, shown as a badge on the filter button. */
   filterCount?: number;
   ref?: Ref<ComponentRef<typeof TextInput>>;
@@ -33,7 +34,7 @@ export interface SearchFieldProps extends Omit<TextInputProps, 'style'> {
 export function SearchField({ value, onChangeText, onFilter, filterCount = 0, onFocus, onBlur, ref, ...input }: SearchFieldProps) {
   const [focused, setFocused] = useState(false);
   return (
-    <View style={[styles.field, focused && styles.fieldFocused]}>
+    <View style={[styles.field, focused && styles.fieldFocused, !onFilter && { paddingRight: space.lg }]}>
       <Search size={20} color={color.icon.secondary} strokeWidth={2} />
       <TextInput
         ref={ref}
@@ -63,6 +64,7 @@ export function SearchField({ value, onChangeText, onFilter, filterCount = 0, on
           <X size={16} color={color.icon.secondary} strokeWidth={2.5} />
         </PressableScale>
       ) : null}
+      {onFilter ? (
       <PressableScale
         accessibilityRole="button"
         accessibilityLabel={filterCount ? `Filtres, ${filterCount} actif${filterCount > 1 ? 's' : ''}` : 'Filtres'}
@@ -80,6 +82,7 @@ export function SearchField({ value, onChangeText, onFilter, filterCount = 0, on
           </View>
         ) : null}
       </PressableScale>
+      ) : null}
     </View>
   );
 }

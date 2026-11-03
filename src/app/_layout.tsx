@@ -12,6 +12,7 @@ import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { authGate } from '@/domain/auth';
+import { effectiveMode } from '@/domain/state';
 import { AppStoreProvider, useStore } from '@/store/AppStore';
 import { color } from '@/theme/tokens';
 import { Splash } from '@/ui/Auth';
@@ -53,6 +54,7 @@ export default function RootLayout() {
 function RootStack() {
   const { state } = useStore();
   const gate = authGate(state.auth);
+  const mode = effectiveMode(state);
   return (
     <Stack
       screenOptions={{
@@ -62,8 +64,22 @@ function RootStack() {
         gestureEnabled: true,
       }}
     >
-      <Stack.Protected guard={gate === 'app'}>
+      {/* The account's current app decides which tab bar is the root (V12 "Passer en mode acheteur"). */}
+      <Stack.Protected guard={gate === 'app' && mode === 'buyer'}>
         <Stack.Screen name="(tabs)" />
+      </Stack.Protected>
+      <Stack.Protected guard={gate === 'app' && mode === 'seller'}>
+        <Stack.Screen name="vendeur/(onglets)" />
+      </Stack.Protected>
+      <Stack.Protected guard={gate === 'app'}>
+        <Stack.Screen name="vendeur/creer" />
+        <Stack.Screen name="vendeur/verification" />
+        <Stack.Screen name="vendeur/statut" options={{ gestureEnabled: false }} />
+        <Stack.Screen name="vendeur/notifications" />
+        <Stack.Screen name="vendeur/commande/[id]" />
+        <Stack.Screen name="vendeur/remise/[id]" />
+        <Stack.Screen name="vendeur/produit/nouveau" />
+        <Stack.Screen name="vendeur/produit/[id]" />
         <Stack.Screen name="produit/[id]" />
         <Stack.Screen name="panier" />
         <Stack.Screen name="achat/livraison" />

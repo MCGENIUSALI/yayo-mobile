@@ -176,6 +176,9 @@ export function lockMinutesLeft(c: OtpChallenge | undefined, now: string): numbe
 
 export const DEMO_PHONE_EXISTING = '+243812345678';
 export const DEMO_PHONE_SUSPENDED = '+243850000000';
+/** Seeded seller (JBL Store Kin, Figma V4 "Bonjour Grâce"). */
+export const DEMO_PHONE_SELLER = '+243897654321';
+export const DEMO_SELLER_ID = 'U-3';
 
 export function createAuthState(): AuthState {
   return {
@@ -206,10 +209,27 @@ export function createAuthState(): AuthState {
         createdAt: '2026-08-01T08:00:00.000Z',
         termsAcceptedAt: '2026-08-01T08:00:00.000Z',
       },
+      [DEMO_SELLER_ID]: demoSellerAccount(),
     },
     needsRoleChoice: false,
-    accountSeq: 2,
+    accountSeq: 3,
     sessionSeq: 0,
+  };
+}
+
+export function demoSellerAccount(): Account {
+  return {
+    id: DEMO_SELLER_ID,
+    phone: DEMO_PHONE_SELLER,
+    email: 'grace@jblstorekin.cd',
+    name: 'Grâce Kabeya',
+    city: 'Kinshasa',
+    commune: 'Gombe',
+    roles: ['buyer', 'seller'],
+    pendingRoles: [],
+    status: 'active',
+    createdAt: '2026-06-02T08:00:00.000Z',
+    termsAcceptedAt: '2026-06-02T08:00:00.000Z',
   };
 }
 
@@ -228,7 +248,11 @@ export type AuthAction =
   | { type: 'auth/chooseRole'; role: 'buyer' | 'seller' | 'courier'; at: string }
   | { type: 'auth/touch'; at: string }
   | { type: 'auth/signOut'; reason?: AuthState['signedOutReason'] }
-  | { type: 'auth/leaveBlocked' };
+  | { type: 'auth/leaveBlocked' }
+  /** V2 sent: the seller role is requested (never granted by the client). */
+  | { type: 'auth/requestRole'; role: 'seller' | 'courier'; at: string }
+  /** Demo only: plays the YA YO team validating a pending role. */
+  | { type: 'auth/demoGrantRole'; role: 'seller' | 'courier'; at: string };
 
 export type AuthResult = { ok: true; auth: AuthState; event?: string } | { ok: false; code: string; message: string; auth?: AuthState };
 
@@ -360,6 +384,21 @@ export function authReduce(auth: AuthState, a: AuthAction): AuthResult {
 
     case 'auth/leaveBlocked':
       return ok({ ...auth, blocked: undefined });
+
+    case 'auth/requestRole': {
+      const acc = currentAccount(auth);
+      if (!acc) return fail('NO_SESSION', 'Connecte-toi d’abord.');
+      if (acc.roles.includes(a.role) || acc.pendingRoles.includes(a.role)) return ok(auth);
+      return ok({ ...auth, accounts: { ...auth.accounts, [acc.id]: { ...acc, pendingRoles: [...acc.pendingRoles, a.role] } } }, `auth.role.requested.${a.role}`);
+    }
+
+    case 'auth/demoGrantRole': {
+      const acc = currentAccount(auth);
+      if (!acc) return fail('NO_SESSION', 'Connecte-toi d’abord.');
+      if (!acc.pendingRoles.includes(a.role)) return fail('NO_REQUEST', 'Aucune demande en attente pour ce rôle.');
+      const next: Account = { ...acc, roles: [...acc.roles, a.role], pendingRoles: acc.pendingRoles.filter((r) => r !== a.role) };
+      return ok({ ...auth, accounts: { ...auth.accounts, [acc.id]: next } }, `auth.role.granted.${a.role}`);
+    }
   }
 }
 

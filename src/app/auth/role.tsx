@@ -13,7 +13,7 @@ type Choice = 'buyer' | 'seller' | 'courier';
 
 const CTA: Record<Choice, string> = {
   buyer: 'Commencer mes achats',
-  seller: 'Demander l’accès vendeur',
+  seller: 'Ouvrir ma boutique',
   courier: 'Demander l’accès livreur',
 };
 
@@ -60,7 +60,9 @@ export default function ChooseRole() {
         </View>
         {role !== 'buyer' ? (
           <Text variant="bodyS" color={color.text.secondary}>
-            Ta demande part à l’équipe YA YO. En attendant sa validation, tu peux déjà acheter.
+            {role === 'seller'
+              ? 'Tu présentes ta boutique et vérifies ton identité ; l’équipe YA YO valide sous 24 à 48 h. En attendant, tu peux déjà acheter.'
+              : 'Ta demande part à l’équipe YA YO. En attendant sa validation, tu peux déjà acheter.'}
           </Text>
         ) : null}
       </Content>
@@ -70,7 +72,7 @@ export default function ChooseRole() {
           haptic="success"
           onPress={() => {
             dispatch({ type: 'auth/chooseRole', role });
-            if (role !== 'buyer') toast('Demande envoyée. Tu suis sa validation dans ton profil.', 'success');
+            if (role === 'courier') toast('Demande envoyée. Tu suis sa validation dans ton profil.', 'success');
           }}
           fill
         />

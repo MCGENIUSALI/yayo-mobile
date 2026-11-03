@@ -1,8 +1,10 @@
-import { authReduce, createAuthState, type AuthAction, type AuthState } from './auth';
+import { authReduce, createAuthState, currentAccount, demoSellerAccount, DEMO_SELLER_ID, type AuthAction, type AuthState } from './auth';
 import { getProduct } from './catalog';
 import { applyOrderEvent, receiptCodeFor, type OrderEvent } from './orderMachine';
 import { detectOperator } from './paymentProvider';
 import { rememberQuery } from './search';
+import { pickupCodeFor, revenue, sellerReduce, type SellerAction, type SellerSpace } from './seller';
+import { seedSellerOrders, seedSellerSpace, SELLER_CHECKOUT_ID } from './sellerSeed';
 import { summarizeCart, splitDiscount } from './pricing';
 import type {
   CartLine,
@@ -13,7 +15,7 @@ import type {
   PaymentMethod,
 } from './types';
 
-export const STATE_VERSION = 4;
+export const STATE_VERSION = 5;
 
 /** Mobile Money request lifetime shown on C4 ("La demande expire dans 01:45"). */
 export const MOMO_REQUEST_TTL_MS = 105_000;
@@ -42,6 +44,8 @@ export type SocialToggle = 'liked' | 'saved' | 'reposted' | 'following' | 'wishl
 /** Recent searches seeded from Figma E4. */
 export const SEED_RECENT_SEARCHES = ['Chaussures sport', 'JBL Go 3'];
 
+export type AppMode = 'buyer' | 'seller';
+
 export interface AppState {
   version: number;
   cart: CartLine[];
@@ -59,6 +63,10 @@ export interface AppState {
   search: { recent: string[] };
   /** US-01: accounts, OTP challenge and session (mock, see auth.ts). */
   auth: AuthState;
+  /** US-10 à US-14: one seller space per account (shop, KYC, catalogue, payouts). */
+  seller: Record<string, SellerSpace>;
+  /** Which app the signed-in account is using (V12 "Passer en mode acheteur"). */
+  mode: AppMode;
   /** Last rejected action, for UI feedback. Never persisted as business state. */
   lastError?: { code: string; message: string; at: string };
 }
@@ -72,6 +80,12 @@ export type Action =
   | { type: 'search/remember'; query: string; at: string }
   | { type: 'search/clearRecent'; at: string }
   | (AuthAction & { at?: string })
+  | SellerAction
+  /** Seller app (V5–V7): same order machine, restricted to the seller's own orders. */
+  | { type: 'seller/orderEvent'; orderId: string; event: Extract<OrderEvent, { type: 'seller.start_preparing' | 'seller.mark_ready' }>; at: string }
+  /** Demo only (V7): plays the courier typing the pick-up code. */
+  | { type: 'seller/demoCourierPickup'; orderId: string; at: string }
+  | { type: 'app/setMode'; mode: AppMode; at: string }
   | { type: 'checkout/pay'; at: string }
   | {
       type: 'checkout/providerResult';
@@ -113,6 +127,8 @@ export function createInitialState(now: string): AppState {
     seller: 'handed_over',
     delivery: 'delivered',
     receiptCode: receiptCodeFor(pastSeq),
+    buyerId: 'U-1',
+    buyer: { name: 'Jean M.', commune: 'Kalamu' },
     addressId: 'home',
     slotId: 'asap',
     milestones: {
@@ -124,6 +140,7 @@ export function createInitialState(now: string): AppState {
       releasedAt: '2026-10-15T14:41:00.000Z',
     },
   };
+  const sellerSeed = seedSellerOrders(now);
   return {
     version: STATE_VERSION,
     cart: [
@@ -140,6 +157,7 @@ export function createInitialState(now: string): AppState {
       msisdn: '81 234 5678',
     },
     checkouts: {
+      [SELLER_CHECKOUT_ID]: sellerSeed.checkout,
       'CK-0': {
         id: 'CK-0',
         orderIds: [past.id],
@@ -151,13 +169,15 @@ export function createInitialState(now: string): AppState {
         attempt: 1,
       },
     },
-    orders: { [past.id]: past },
+    orders: { [past.id]: past, ...sellerSeed.orders },
     orderSeq: 24868,
     checkoutSeq: 1,
     events: [{ id: 'EV-1', at: now, actor: 'system', type: 'demo.seeded' }],
     social: { liked: [], saved: [], reposted: [], following: ['mama-luka-mode'], wishlist: [] },
     search: { recent: [...SEED_RECENT_SEARCHES] },
     auth: createAuthState(),
+    seller: { [DEMO_SELLER_ID]: seedSellerSpace(now) },
+    mode: 'buyer',
   };
 }
 
@@ -170,22 +190,46 @@ export function restoreState(saved: unknown, now: string): AppState {
   if (!s || typeof s !== 'object' || typeof s.version !== 'number') return createInitialState(now);
   if (s.version === STATE_VERSION) return { ...(s as AppState), lastError: undefined };
   if ((s.version === 2 || s.version === 3) && s.social) {
-    return {
-      ...(s as AppState),
-      version: STATE_VERSION,
-      social: { ...s.social, wishlist: s.social.wishlist ?? [] },
-      search: s.search ?? { recent: [...SEED_RECENT_SEARCHES] },
-      // Sessions did not exist before v4: the buyer signs in once.
-      auth: createAuthState(),
-      lastError: undefined,
-    };
+    return toV5(
+      {
+        ...(s as AppState),
+        social: { ...s.social, wishlist: s.social.wishlist ?? [] },
+        search: s.search ?? { recent: [...SEED_RECENT_SEARCHES] },
+        // Sessions did not exist before v4: the buyer signs in once.
+        auth: createAuthState(),
+      },
+      now,
+    );
   }
+  if (s.version === 4 && s.auth) return toV5(s as AppState, now);
   return createInitialState(now);
+}
+
+/** v5 adds the seller app: seeded seller account, shop and orders; existing orders belong to Jean (the only buyer before v5). */
+function toV5(s: AppState, now: string): AppState {
+  const seed = seedSellerOrders(now);
+  const orders: Record<string, Order> = {};
+  for (const [id, o] of Object.entries(s.orders)) orders[id] = o.buyerId ? o : { ...o, buyerId: 'U-1', buyer: o.buyer ?? { name: 'Jean M.', commune: 'Kalamu' } };
+  for (const [id, o] of Object.entries(seed.orders)) if (!orders[id]) orders[id] = o;
+  return {
+    ...s,
+    version: STATE_VERSION,
+    orders,
+    checkouts: { ...s.checkouts, [SELLER_CHECKOUT_ID]: s.checkouts[SELLER_CHECKOUT_ID] ?? seed.checkout },
+    auth: s.auth.accounts[DEMO_SELLER_ID]
+      ? s.auth
+      : { ...s.auth, accounts: { ...s.auth.accounts, [DEMO_SELLER_ID]: demoSellerAccount() }, accountSeq: Math.max(s.auth.accountSeq, 3) },
+    seller: s.seller ?? { [DEMO_SELLER_ID]: seedSellerSpace(now) },
+    mode: s.mode ?? 'buyer',
+    lastError: undefined,
+  };
 }
 
 /** Pure reducer: the only place where business state changes. */
 export function reducer(state: AppState, action: Action): AppState {
   if (action.type.startsWith('auth/')) return reduceAuth(state, action as AuthAction & { at?: string });
+  if (action.type.startsWith('seller/') && action.type !== 'seller/orderEvent' && action.type !== 'seller/demoCourierPickup')
+    return reduceSeller(state, action as SellerAction);
   switch (action.type) {
     case 'cart/add': {
       const product = getProduct(action.productId);
@@ -328,9 +372,34 @@ export function reducer(state: AppState, action: Action): AppState {
       return next;
     }
 
-    case 'demo/reset':
-      // Resets the shopping demo, not the buyer's account or session.
-      return { ...createInitialState(action.at), auth: state.auth };
+    case 'seller/orderEvent': {
+      const space = activeSellerSpace(state);
+      const order = state.orders[action.orderId];
+      if (!space || space.status !== 'verified') return reject(state, 'NOT_SELLER', 'Ta boutique doit être vérifiée pour traiter des commandes.', action.at);
+      if (!order || order.shopId !== space.shopId) return reject(state, 'NOT_FOUND', 'Commande introuvable.', action.at);
+      return reducer(state, { type: 'order/event', orderId: order.id, event: action.event, actor: 'seller', at: action.at });
+    }
+
+    case 'seller/demoCourierPickup': {
+      const space = activeSellerSpace(state);
+      const order = state.orders[action.orderId];
+      if (!space || !order || order.shopId !== space.shopId) return reject(state, 'NOT_FOUND', 'Commande introuvable.', action.at);
+      let next = state;
+      if (order.delivery === 'assigned') next = reducer(next, { type: 'order/event', orderId: order.id, event: { type: 'courier.accept' }, actor: 'courier', at: action.at });
+      return reducer(next, { type: 'order/event', orderId: order.id, event: { type: 'courier.collect', code: pickupCodeFor(order.id) }, actor: 'courier', at: action.at });
+    }
+
+    case 'app/setMode': {
+      if (action.mode === state.mode) return state;
+      if (action.mode === 'seller' && !canUseSellerMode(state)) return reject(state, 'NOT_SELLER', 'Ouvre d’abord ta boutique.', action.at);
+      return { ...state, mode: action.mode };
+    }
+
+    case 'demo/reset': {
+      // Resets the shopping demo, not the accounts or the session; the seeded seller gets its shop back.
+      const fresh = createInitialState(action.at);
+      return { ...fresh, auth: state.auth, mode: state.mode, seller: { ...state.seller, ...fresh.seller } };
+    }
     default:
       return state;
   }
@@ -340,9 +409,17 @@ function reduceAuth(state: AppState, action: AuthAction & { at?: string }): AppS
   const r = authReduce(state.auth, action);
   const at = action.at ?? '';
   if (!r.ok) return { ...state, auth: r.auth ?? state.auth, lastError: { code: r.code, message: r.message, at } };
+  const before = state.auth.session?.id;
+  const after = r.auth.session;
+  // A new session opens on the app the account uses: sellers land on their dashboard (V4).
+  let mode: AppMode =
+    after && after.id !== before ? (r.auth.accounts[after.accountId]?.roles.includes('seller') ? 'seller' : 'buyer') : after ? state.mode : 'buyer';
+  // A8 "Vendeur": the new seller lands in the seller app, on "Ouvre ta boutique" (V1).
+  if (action.type === 'auth/chooseRole' && action.role === 'seller') mode = 'seller';
   return {
     ...state,
     auth: r.auth,
+    mode,
     lastError: undefined,
     // Security log: event type only, never the phone, e-mail or code (same rule as the dashboard).
     events: r.event ? log(state, { at, actor: 'buyer', type: r.event }) : state.events,
@@ -405,6 +482,8 @@ function pay(state: AppState, at: string): AppState {
       seller: 'new',
       delivery: 'unassigned',
       receiptCode: receiptCodeFor(seq),
+      buyerId: state.auth.session?.accountId,
+      buyer: buyerLabel(state),
       addressId: draft.addressId,
       slotId: draft.slotId,
       courierNote: draft.note.trim() || undefined,
@@ -492,9 +571,10 @@ function confirmCash(state: AppState, ck: Checkout, at: string): AppState {
 
 /* ---------- Selectors ---------- */
 
+/** The signed-in buyer's paid orders ("Mes commandes"). */
 export const confirmedOrders = (s: AppState): Order[] =>
   Object.values(s.orders)
-    .filter((o) => s.checkouts[o.checkoutId]?.status === 'succeeded')
+    .filter((o) => s.checkouts[o.checkoutId]?.status === 'succeeded' && o.buyerId === s.auth.session?.accountId)
     .sort((a, b) => (a.milestones.createdAt < b.milestones.createdAt ? 1 : -1));
 
 export type OrderTab = 'active' | 'delivered' | 'disputes';
@@ -517,4 +597,59 @@ export function addToCartError(state: AppState, productId: string, color: string
 /** Count shown on a post, including the buyer's own action. */
 export function socialCount(base: number, active: boolean): number {
   return base + (active ? 1 : 0);
+}
+
+/* ---------- Seller ---------- */
+
+function buyerLabel(state: AppState): Order['buyer'] {
+  const acc = currentAccount(state.auth);
+  if (!acc) return undefined;
+  const [first = '', ...rest] = acc.name.split(' ');
+  const last = rest.at(-1);
+  return { name: last ? `${first} ${last[0]}.` : first, commune: acc.commune };
+}
+
+/** Seller space of the signed-in account, if V1 was saved. */
+export function activeSellerSpace(state: AppState): SellerSpace | undefined {
+  const id = state.auth.session?.accountId;
+  return id ? state.seller[id] : undefined;
+}
+
+/** Seller app reachable: a shop exists, or the seller role is granted or requested. */
+export function canUseSellerMode(state: AppState): boolean {
+  const acc = currentAccount(state.auth);
+  if (!acc) return false;
+  return !!state.seller[acc.id] || acc.roles.includes('seller') || acc.pendingRoles.includes('seller');
+}
+
+export function effectiveMode(state: AppState): AppMode {
+  return state.mode === 'seller' && canUseSellerMode(state) ? 'seller' : 'buyer';
+}
+
+/** Paid orders of the seller's shop, most recent first (V5). */
+export function shopOrders(state: AppState, shopId: string | undefined): Order[] {
+  if (!shopId) return [];
+  return Object.values(state.orders)
+    .filter((o) => o.shopId === shopId && state.checkouts[o.checkoutId]?.status === 'succeeded')
+    .sort((a, b) => (a.milestones.createdAt < b.milestones.createdAt ? 1 : -1));
+}
+
+function reduceSeller(state: AppState, action: SellerAction): AppState {
+  const acc = currentAccount(state.auth);
+  if (!acc) return reject(state, 'NO_SESSION', 'Connecte-toi d’abord.', action.at);
+  const space = state.seller[acc.id];
+  const available = space ? revenue(shopOrders(state, space.shopId), space.withdrawals, action.at).available : 0;
+  const r = sellerReduce(space, action, { accountId: acc.id, available, shopId: space?.shopId ?? `shop-${acc.id}` });
+  if (!r.ok) return reject(state, r.code, r.message, action.at);
+  let next: AppState = {
+    ...state,
+    seller: { ...state.seller, [acc.id]: r.space },
+    lastError: undefined,
+    events: r.event ? log(state, { at: action.at, actor: 'seller', type: r.event }) : state.events,
+  };
+  // V2 files the seller request; the demo approval plays the YA YO team.
+  if (action.type === 'seller/submitKyc') next = reduceAuth(next, { type: 'auth/requestRole', role: 'seller', at: action.at });
+  if (action.type === 'seller/demoApprove' && acc.pendingRoles.includes('seller'))
+    next = reduceAuth(next, { type: 'auth/demoGrantRole', role: 'seller', at: action.at });
+  return next;
 }

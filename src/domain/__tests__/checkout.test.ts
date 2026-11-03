@@ -3,6 +3,7 @@ import { formatFC, formatUSD } from '../money';
 import { detectOperator, formatLocalMsisdn } from '../paymentProvider';
 import { applyOrderEvent, nextRoleEvents } from '../orderMachine';
 import { splitDiscount, summarizeCart } from '../pricing';
+import { pickupCodeFor } from '../seller';
 import { confirmedOrders, createInitialState, reducer, type Action, type AppState } from '../state';
 
 const T0 = '2026-11-02T10:00:00.000Z';
@@ -135,7 +136,9 @@ describe('order state machine (cross-role)', () => {
     step({ type: 'seller.start_preparing' }, 'seller', 10);
     step({ type: 'seller.mark_ready' }, 'seller', 20);
     step({ type: 'courier.accept' }, 'courier', 30);
-    step({ type: 'courier.collect' }, 'courier', 40);
+    step({ type: 'courier.collect', code: 'Z999' }, 'courier', 39);
+    expect(s.lastError?.code).toBe('WRONG_PICKUP_CODE');
+    step({ type: 'courier.collect', code: pickupCodeFor(id) }, 'courier', 40);
     expect(s.orders[id]!.payment).toBe('in_delivery');
 
     step({ type: 'courier.confirm_delivery', code: '0000' }, 'courier', 50);
@@ -168,7 +171,7 @@ describe('order state machine (cross-role)', () => {
       { type: 'seller.start_preparing' },
       { type: 'seller.mark_ready' },
       { type: 'courier.accept' },
-      { type: 'courier.collect' },
+      { type: 'courier.collect', code: pickupCodeFor(id) },
     ] as const) {
       s = reducer(s, { type: 'order/event', orderId: id, event, actor: 'seller', at: at(5) });
     }

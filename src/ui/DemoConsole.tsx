@@ -1,6 +1,7 @@
 import { FlaskConical } from 'lucide-react-native';
 import { StyleSheet, View } from 'react-native';
 import { nextRoleEvents, type OrderEvent, type OrderEventType } from '@/domain/orderMachine';
+import { pickupCodeFor } from '@/domain/seller';
 import type { Order } from '@/domain/types';
 import { useStore } from '@/store/AppStore';
 import { color, radius, space } from '@/theme/tokens';
@@ -37,7 +38,9 @@ export function DemoConsole({ order }: { order: Order }) {
         const event: OrderEvent =
           type === 'courier.confirm_delivery'
             ? { type, code: order.receiptCode, cashCollected: order.method === 'cash' }
-            : ({ type } as OrderEvent);
+            : type === 'courier.collect'
+              ? { type, code: pickupCodeFor(order.id) }
+              : ({ type } as OrderEvent);
         return (
           <Button
             key={type}

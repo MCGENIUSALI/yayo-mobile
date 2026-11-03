@@ -1,4 +1,5 @@
 import { demoCourier } from './catalog';
+import { pickupCodeFor } from './seller';
 import type { Order, PaymentStatus } from './types';
 
 /**
@@ -12,7 +13,8 @@ export type OrderEvent =
   | { type: 'seller.start_preparing' }
   | { type: 'seller.mark_ready' }
   | { type: 'courier.accept' }
-  | { type: 'courier.collect' }
+  /** The courier types the seller's pick-up code (V7) to confirm the collection. */
+  | { type: 'courier.collect'; code: string }
   | { type: 'courier.confirm_delivery'; code: string; cashCollected?: boolean }
   | { type: 'escrow.release' };
 
@@ -22,6 +24,7 @@ export type DomainErrorCode =
   | 'INVALID_TRANSITION'
   | 'PAYMENT_NOT_SECURED'
   | 'WRONG_RECEIPT_CODE'
+  | 'WRONG_PICKUP_CODE'
   | 'CASH_NOT_COLLECTED';
 
 export class DomainError extends Error {
@@ -72,6 +75,7 @@ export function applyOrderEvent(order: Order, event: OrderEvent, at: string): Tr
     case 'courier.collect': {
       if (order.delivery !== 'picking_up' || order.seller !== 'ready')
         return fail('INVALID_TRANSITION', 'Le colis n’est pas prêt pour la collecte.');
+      if (event.code.trim().toUpperCase() !== pickupCodeFor(order.id)) return fail('WRONG_PICKUP_CODE', 'Code de remise incorrect.');
       const payment: PaymentStatus = 'in_delivery';
       return {
         ok: true,
@@ -114,7 +118,7 @@ export function nextRoleEvents(order: Order): OrderEventType[] {
     { type: 'seller.start_preparing' },
     { type: 'seller.mark_ready' },
     { type: 'courier.accept' },
-    { type: 'courier.collect' },
+    { type: 'courier.collect', code: pickupCodeFor(order.id) },
     { type: 'courier.confirm_delivery', code: order.receiptCode, cashCollected: true },
   ];
   return candidates.filter((e) => applyOrderEvent(order, e, '').ok).map((e) => e.type);

@@ -215,10 +215,13 @@ export function Segmented<T extends string>({
   options,
   value,
   onChange,
+  fit = false,
 }: {
   options: { value: T; label: string }[];
   value: T;
   onChange: (v: T) => void;
+  /** Size each segment to its label (4 segments on a phone width). */
+  fit?: boolean;
 }) {
   return (
     <View style={styles.segmented} accessibilityRole="tablist">
@@ -232,9 +235,9 @@ export function Segmented<T extends string>({
             onPress={() => onChange(o.value)}
             haptic="selection"
             scaleTo={pressScale.card}
-            style={[styles.segment, active && styles.segmentActive]}
+            style={[styles.segment, fit && styles.segmentFit, active && styles.segmentActive]}
           >
-            <Text variant={active ? 'labelM' : 'bodyM'} color={active ? color.text.primary : color.text.secondary}>
+            <Text variant={active ? 'labelM' : 'bodyM'} color={active ? color.text.primary : color.text.secondary} numberOfLines={1}>
               {o.label}
             </Text>
           </PressableScale>
@@ -305,6 +308,7 @@ const styles = StyleSheet.create({
     backgroundColor: color.bg.surfaceMuted,
   },
   segment: { flex: 1, height: 36, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+  segmentFit: { flexGrow: 1, flexShrink: 1, flexBasis: 'auto', paddingHorizontal: space.sm },
   segmentActive: {
     backgroundColor: color.bg.surface,
     shadowColor: '#0a0a0d',

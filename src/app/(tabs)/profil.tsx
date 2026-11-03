@@ -1,7 +1,9 @@
-import { LogOut, RotateCcw } from 'lucide-react-native';
+import { router } from 'expo-router';
+import { LogOut, RotateCcw, Store } from 'lucide-react-native';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { currentAccount, displayTarget, initialsOf } from '@/domain/auth';
-import { confirmedOrders } from '@/domain/state';
+import { activeSellerSpace, canUseSellerMode, confirmedOrders } from '@/domain/state';
+import { useSwitchMode } from '@/store/useSwitchMode';
 import { useStore } from '@/store/AppStore';
 import { color, radius, space } from '@/theme/tokens';
 import { Button } from '@/ui/Button';
@@ -26,6 +28,9 @@ export default function ProfileScreen() {
   const orders = confirmedOrders(state).length;
   const account = currentAccount(state.auth);
   const pendingLabel = { seller: 'Vendeur', courier: 'Livreur', buyer: 'Acheteur', admin: 'Admin' } as const;
+  const switchTo = useSwitchMode();
+  const sellerSpace = activeSellerSpace(state);
+  const sellerReady = canUseSellerMode(state);
   return (
     <View style={styles.screen}>
       <LargeTitleBar title="Profil" />
@@ -54,10 +59,38 @@ export default function ProfileScreen() {
         </Card>
 
         <Card>
+          <View style={styles.row}>
+            <View style={styles.sellerIcon}>
+              <Store size={22} color={color.icon.accent} strokeWidth={2} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text variant="labelL">{sellerSpace ? sellerSpace.profile.name : 'Vendre sur YA YO'}</Text>
+              <Text variant="bodyS" color={color.text.secondary}>
+                {sellerSpace
+                  ? sellerSpace.status === 'verified'
+                    ? 'Boutique vérifiée'
+                    : sellerSpace.status === 'submitted'
+                      ? 'Vérification en cours'
+                      : 'Vérification d’identité à faire'
+                  : 'Ouvre ta boutique : paiements sécurisés, livraison par YA YO.'}
+              </Text>
+            </View>
+          </View>
+          <Button
+            label={sellerReady ? 'Passer en mode vendeur' : 'Ouvrir ma boutique'}
+            variant="outline"
+            size="M"
+            haptic="selection"
+            onPress={() => (sellerReady ? switchTo('seller', '/vendeur/tableau') : router.push('/vendeur/creer'))}
+            fill
+          />
+        </Card>
+
+        <Card>
           <Text variant="labelL">Connexion (démo)</Text>
           <Text variant="bodyS" color={color.text.secondary}>
-            Le code s’affiche sur l’écran de vérification. 81 234 5678 ouvre le compte de Jean Mukendi, 85 000 0000 un compte suspendu ; tout
-            autre numéro crée un nouveau compte.
+            Le code s’affiche sur l’écran de vérification. 81 234 5678 ouvre le compte de Jean Mukendi, 89 765 4321 la vendeuse de JBL Store
+            Kin, 85 000 0000 un compte suspendu ; tout autre numéro crée un nouveau compte.
           </Text>
         </Card>
 
@@ -108,6 +141,7 @@ const styles = StyleSheet.create({
   content: { padding: space.screen, gap: space.lg },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  sellerIcon: { width: 44, height: 44, borderRadius: radius.md, backgroundColor: color.bg.accentSubtle, alignItems: 'center', justifyContent: 'center' },
   scenario: {
     flexDirection: 'row',
     alignItems: 'center',
