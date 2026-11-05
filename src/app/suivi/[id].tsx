@@ -5,6 +5,7 @@ import { ScrollView, Share, StyleSheet, View, useWindowDimensions } from 'react-
 import Animated from 'react-native-reanimated';
 import { getShop } from '@/domain/catalog';
 import { formatFC } from '@/domain/money';
+import { incidentLabel } from '@/domain/courier';
 import { buildTimeline, etaLabel, showReceiptCode, type StepKey } from '@/domain/tracking';
 import { useStore } from '@/store/AppStore';
 import { color, space } from '@/theme/tokens';
@@ -90,7 +91,7 @@ export default function TrackingScreen() {
                   <View style={styles.flex}>
                     <Text variant="labelL">{order.courier.name} · ton livreur</Text>
                     <Text variant="caption" color={color.text.secondary}>
-                      {order.courier.vehicle} · Livreur vérifié · {order.courier.rating.toLocaleString('fr-FR')} ★
+                      {order.courier.vehicle} · Livreur vérifié · {order.courier.rating ? `${order.courier.rating.toLocaleString('fr-FR')} ★` : 'nouveau'}
                     </Text>
                   </View>
                   <IconButton icon={Phone} label="Appeler le livreur" onPress={() => toast('Appel via YA YO : numéro masqué (simulation).')} />
@@ -110,6 +111,15 @@ export default function TrackingScreen() {
             <Animated.View entering={enter[2]}>
               <DeliveryCode code={order.receiptCode} />
             </Animated.View>
+          ) : null}
+
+          {order.incident ? (
+            <Alert
+              tone="danger"
+              icon={TriangleAlert}
+              title="Livraison impossible"
+              body={`Motif signalé par le livreur : ${incidentLabel(order.incident.reason).short}. YA YO te contacte pour une nouvelle tentative ou un remboursement ; ton paiement reste bloqué d’ici là.`}
+            />
           ) : null}
 
           {delivered ? (

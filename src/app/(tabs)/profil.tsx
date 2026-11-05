@@ -1,8 +1,8 @@
 import { router } from 'expo-router';
-import { LogOut, RotateCcw, Store } from 'lucide-react-native';
+import { Bike, LogOut, RotateCcw, Store } from 'lucide-react-native';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { currentAccount, displayTarget, initialsOf } from '@/domain/auth';
-import { activeSellerSpace, canUseSellerMode, confirmedOrders } from '@/domain/state';
+import { activeCourierSpace, activeSellerSpace, canUseCourierMode, canUseSellerMode, confirmedOrders } from '@/domain/state';
 import { useSwitchMode } from '@/store/useSwitchMode';
 import { useStore } from '@/store/AppStore';
 import { color, radius, space } from '@/theme/tokens';
@@ -31,6 +31,8 @@ export default function ProfileScreen() {
   const switchTo = useSwitchMode();
   const sellerSpace = activeSellerSpace(state);
   const sellerReady = canUseSellerMode(state);
+  const courierSpace = activeCourierSpace(state);
+  const courierReady = canUseCourierMode(state);
   return (
     <View style={styles.screen}>
       <LargeTitleBar title="Profil" />
@@ -87,10 +89,38 @@ export default function ProfileScreen() {
         </Card>
 
         <Card>
+          <View style={styles.row}>
+            <View style={styles.sellerIcon}>
+              <Bike size={22} color={color.icon.accent} strokeWidth={2} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text variant="labelL">Livrer avec YA YO</Text>
+              <Text variant="bodyS" color={color.text.secondary}>
+                {courierSpace
+                  ? courierSpace.status === 'verified'
+                    ? 'Compte livreur validé'
+                    : courierSpace.status === 'submitted'
+                      ? 'Dossier en cours de validation'
+                      : 'Documents à envoyer'
+                  : 'Moto, voiture, vélo ou à pied : tu es payé à chaque mission.'}
+              </Text>
+            </View>
+          </View>
+          <Button
+            label={courierReady ? 'Passer en mode livreur' : 'Devenir livreur'}
+            variant="outline"
+            size="M"
+            haptic="selection"
+            onPress={() => (courierReady ? switchTo('courier', '/livreur/accueil') : router.push('/livreur/inscription'))}
+            fill
+          />
+        </Card>
+
+        <Card>
           <Text variant="labelL">Connexion (démo)</Text>
           <Text variant="bodyS" color={color.text.secondary}>
             Le code s’affiche sur l’écran de vérification. 81 234 5678 ouvre le compte de Jean Mukendi, 89 765 4321 la vendeuse de JBL Store
-            Kin, 85 000 0000 un compte suspendu ; tout autre numéro crée un nouveau compte.
+            Kin, 99 876 5432 le livreur Patrick, 85 000 0000 un compte suspendu ; tout autre numéro crée un nouveau compte.
           </Text>
         </Card>
 
@@ -108,7 +138,7 @@ export default function ProfileScreen() {
             </View>
           ))}
           <Text variant="bodyS" color={color.text.secondary}>
-            Vendeur et livreur se simulent depuis le suivi d’une commande (Mode démo).
+            Vendeur et livreur se jouent avec leurs comptes, ou se simulent depuis le suivi d’une commande (Mode démo).
           </Text>
         </Card>
 

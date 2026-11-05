@@ -1,6 +1,6 @@
 import { demoCourier } from './catalog';
 import { pickupCodeFor } from './seller';
-import type { Order, PaymentStatus } from './types';
+import type { Courier, IncidentReason, Mission, Order, PaymentStatus } from './types';
 
 /**
  * Authoritative order state machine (mock back-end).
@@ -11,11 +11,18 @@ import type { Order, PaymentStatus } from './types';
 
 export type OrderEvent =
   | { type: 'seller.start_preparing' }
-  | { type: 'seller.mark_ready' }
+  /** The parcel is ready: the dispatcher's courier and mission come with it (defaults to the simulated fleet). */
+  | { type: 'seller.mark_ready'; courier?: Courier; mission?: Mission }
   | { type: 'courier.accept' }
+  /** L4 "Refuser": the mission goes to the next courier, never back to this one. */
+  | { type: 'courier.decline'; by: string; next: Courier }
   /** The courier types the seller's pick-up code (V7) to confirm the collection. */
   | { type: 'courier.collect'; code: string }
+  /** L6 "Je suis arrivé". */
+  | { type: 'courier.arrive' }
   | { type: 'courier.confirm_delivery'; code: string; cashCollected?: boolean }
+  /** L9 · Impossible de livrer. Funds stay with YA YO until it decides (new attempt, return or refund). */
+  | { type: 'courier.report_incident'; reason: IncidentReason; photo: number | string }
   | { type: 'escrow.release' };
 
 export type OrderEventType = OrderEvent['type'];
@@ -25,7 +32,8 @@ export type DomainErrorCode =
   | 'PAYMENT_NOT_SECURED'
   | 'WRONG_RECEIPT_CODE'
   | 'WRONG_PICKUP_CODE'
-  | 'CASH_NOT_COLLECTED';
+  | 'CASH_NOT_COLLECTED'
+  | 'PROOF_REQUIRED';
 
 export class DomainError extends Error {
   constructor(
@@ -63,14 +71,37 @@ export function applyOrderEvent(order: Order, event: OrderEvent, at: string): Tr
           ...order,
           seller: 'ready',
           delivery: 'assigned',
-          courier: demoCourier,
+          courier: event.courier ?? demoCourier,
+          mission: event.mission,
           milestones: { ...order.milestones, preparedAt: at },
         },
       };
     }
     case 'courier.accept': {
       if (order.delivery !== 'assigned') return fail('INVALID_TRANSITION', 'Aucune mission assignée.');
-      return { ok: true, order: { ...order, delivery: 'picking_up' } };
+      return { ok: true, order: { ...order, delivery: 'picking_up', milestones: { ...order.milestones, acceptedAt: at } } };
+    }
+    case 'courier.decline': {
+      if (order.delivery !== 'assigned') return fail('INVALID_TRANSITION', 'Cette mission n’est plus proposée.');
+      const mission = order.mission ? { ...order.mission, declinedBy: [...order.mission.declinedBy, event.by], proposedAt: at } : undefined;
+      return { ok: true, order: { ...order, courier: event.next, mission } };
+    }
+    case 'courier.arrive': {
+      if (order.delivery !== 'delivering') return fail('INVALID_TRANSITION', 'Le colis n’est pas en cours de livraison.');
+      if (order.milestones.arrivedAt) return { ok: true, order };
+      return { ok: true, order: { ...order, milestones: { ...order.milestones, arrivedAt: at } } };
+    }
+    case 'courier.report_incident': {
+      if (order.delivery !== 'delivering') return fail('INVALID_TRANSITION', 'Un incident se déclare pendant la livraison.');
+      if (!event.photo) return fail('PROOF_REQUIRED', 'Ajoute une photo du lieu comme preuve de passage.');
+      return {
+        ok: true,
+        order: {
+          ...order,
+          delivery: 'failed',
+          incident: { reason: event.reason, photo: event.photo, at },
+        },
+      };
     }
     case 'courier.collect': {
       if (order.delivery !== 'picking_up' || order.seller !== 'ready')

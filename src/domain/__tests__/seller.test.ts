@@ -1,7 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 import { currentAccount, DEMO_PHONE_EXISTING, DEMO_PHONE_SELLER } from '../auth';
 import { orderNet, payoutPreview, pickupCodeFor, revenue, sellerNotices, type ProductDraft } from '../seller';
-import { activeSellerSpace, confirmedOrders, createInitialState, effectiveMode, reducer, restoreState, shopOrders, type Action, type AppState } from '../state';
+import { activeSellerSpace, confirmedOrders, createInitialState, effectiveMode, reducer, restoreState, shopOrders, STATE_VERSION, type Action, type AppState } from '../state';
 
 const T0 = '2026-11-03T10:00:00.000Z';
 const at = (s: number) => new Date(new Date(T0).getTime() + s * 1000).toISOString();
@@ -179,11 +179,12 @@ describe('migration', () => {
   it('upgrades a v4 session without losing the cart, and gives old orders to Jean', () => {
     const v4 = { ...createInitialState(T0), version: 4 } as Partial<AppState>;
     delete v4.seller;
+    delete v4.courier;
     delete v4.mode;
     const orders = { ...v4.orders! };
     orders['YY-24790'] = { ...orders['YY-24790']!, buyerId: undefined, buyer: undefined };
     const restored = restoreState({ ...v4, orders }, T0);
-    expect(restored.version).toBe(5);
+    expect(restored.version).toBe(STATE_VERSION);
     expect(restored.cart).toHaveLength(3);
     expect(restored.orders['YY-24790']!.buyerId).toBe('U-1');
     expect(restored.mode).toBe('buyer');

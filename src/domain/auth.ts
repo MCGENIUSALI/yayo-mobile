@@ -179,6 +179,9 @@ export const DEMO_PHONE_SUSPENDED = '+243850000000';
 /** Seeded seller (JBL Store Kin, Figma V4 "Bonjour Grâce"). */
 export const DEMO_PHONE_SELLER = '+243897654321';
 export const DEMO_SELLER_ID = 'U-3';
+/** Seeded courier (Figma L4 "Bonjour Patrick", L14 Patrick Kalala). Not a `U-<n>` id: v5 sessions may already own U-4. */
+export const DEMO_PHONE_COURIER = '+243998765432';
+export const DEMO_COURIER_ID = 'U-C1';
 
 export function createAuthState(): AuthState {
   return {
@@ -210,6 +213,7 @@ export function createAuthState(): AuthState {
         termsAcceptedAt: '2026-08-01T08:00:00.000Z',
       },
       [DEMO_SELLER_ID]: demoSellerAccount(),
+      [DEMO_COURIER_ID]: demoCourierAccount(),
     },
     needsRoleChoice: false,
     accountSeq: 3,
@@ -230,6 +234,21 @@ export function demoSellerAccount(): Account {
     status: 'active',
     createdAt: '2026-06-02T08:00:00.000Z',
     termsAcceptedAt: '2026-06-02T08:00:00.000Z',
+  };
+}
+
+export function demoCourierAccount(): Account {
+  return {
+    id: DEMO_COURIER_ID,
+    phone: DEMO_PHONE_COURIER,
+    name: 'Patrick Kalala',
+    city: 'Kinshasa',
+    commune: 'Gombe',
+    roles: ['buyer', 'courier'],
+    pendingRoles: [],
+    status: 'active',
+    createdAt: '2026-10-20T08:00:00.000Z',
+    termsAcceptedAt: '2026-10-20T08:00:00.000Z',
   };
 }
 

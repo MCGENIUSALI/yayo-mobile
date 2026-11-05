@@ -114,6 +114,7 @@ function order(
   status: Pick<Order, 'payment' | 'seller' | 'delivery'>,
   milestones: Order['milestones'],
   buyerId = 'EXT',
+  dropoff?: string,
 ): Order {
   const itemsTotal = lines.reduce((t, l) => t + l.unitPrice * l.qty, 0);
   return {
@@ -132,9 +133,19 @@ function order(
     slotId: 'asap',
     buyer,
     buyerId,
+    dropoff: dropoff ?? DROPOFF[buyer.name],
     milestones,
   };
 }
+
+/** Where the courier delivers each seeded buyer (L4, L6). */
+const DROPOFF: Record<string, string> = {
+  'Grâce M.': '14, av. Victoire, Kalamu',
+  'Junior K.': '23, av. Kikwit, Lemba',
+  'Patricia N.': '5, av. de la Montagne, Ngaliema',
+  'Didier T.': '9, av. Kimbondo, Bandalungwa',
+  'Merveille L.': '2, 12e rue, Limete',
+};
 
 /** V5 "Nouvelles (2)", one parcel waiting for the courier, and paid history for V11. */
 export function seedSellerOrders(now: string): { orders: Record<string, Order>; checkout: Checkout } {

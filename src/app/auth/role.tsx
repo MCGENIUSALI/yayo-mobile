@@ -5,7 +5,6 @@ import { useStore } from '@/store/AppStore';
 import { color, space } from '@/theme/tokens';
 import { RoleCard, StepLabel } from '@/ui/Auth';
 import { Button } from '@/ui/Button';
-import { useToast } from '@/ui/Feedback';
 import { BottomBar, Content, Screen } from '@/ui/Layout';
 import { Text } from '@/ui/Text';
 
@@ -14,7 +13,7 @@ type Choice = 'buyer' | 'seller' | 'courier';
 const CTA: Record<Choice, string> = {
   buyer: 'Commencer mes achats',
   seller: 'Ouvrir ma boutique',
-  courier: 'Demander l’accès livreur',
+  courier: 'Devenir livreur',
 };
 
 /**
@@ -24,7 +23,6 @@ const CTA: Record<Choice, string> = {
  */
 export default function ChooseRole() {
   const { dispatch } = useStore();
-  const toast = useToast();
   const [role, setRole] = useState<Choice>('buyer');
 
   return (
@@ -62,7 +60,7 @@ export default function ChooseRole() {
           <Text variant="bodyS" color={color.text.secondary}>
             {role === 'seller'
               ? 'Tu présentes ta boutique et vérifies ton identité ; l’équipe YA YO valide sous 24 à 48 h. En attendant, tu peux déjà acheter.'
-              : 'Ta demande part à l’équipe YA YO. En attendant sa validation, tu peux déjà acheter.'}
+              : 'Tu indiques ton véhicule et envoies tes documents ; un administrateur YA YO valide sous 48 h. En attendant, tu peux déjà acheter.'}
           </Text>
         ) : null}
       </Content>
@@ -70,10 +68,7 @@ export default function ChooseRole() {
         <Button
           label={CTA[role]}
           haptic="success"
-          onPress={() => {
-            dispatch({ type: 'auth/chooseRole', role });
-            if (role === 'courier') toast('Demande envoyée. Tu suis sa validation dans ton profil.', 'success');
-          }}
+          onPress={() => dispatch({ type: 'auth/chooseRole', role })}
           fill
         />
       </BottomBar>

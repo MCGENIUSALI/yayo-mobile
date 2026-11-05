@@ -105,6 +105,8 @@ export interface OrderLine {
 }
 
 export interface Courier {
+  /** Courier account in the app (absent for the simulated YA YO fleet). */
+  id?: string;
   name: string;
   initials: string;
   vehicle: string;
@@ -117,6 +119,9 @@ export interface OrderMilestones {
   paidAt?: string;
   preparedAt?: string;
   pickedUpAt?: string;
+  /** Courier mission (L4–L8): accepted, then "Je suis arrivé". */
+  acceptedAt?: string;
+  arrivedAt?: string;
   deliveredAt?: string;
   releasedAt?: string;
   failedAt?: string;
@@ -149,8 +154,32 @@ export interface Order {
   /** What the seller sees on V5/V6: first name + initial and commune, never the phone (V6). */
   buyer?: { name: string; commune: string };
   courier?: Courier;
+  /** Courier mission, created when the parcel is ready and a courier is dispatched (L4). */
+  mission?: Mission;
+  /** Drop-off address of a buyer outside the demo account (the demo buyer uses `addressId`). */
+  dropoff?: string;
+  /** L9 · Incident declared by the courier; YA YO decides what happens next. */
+  incident?: DeliveryIncident;
   cashCollected?: boolean;
   milestones: OrderMilestones;
+}
+
+export interface Mission {
+  /** "M-5521", shown to the courier instead of the order number. */
+  id: string;
+  distanceKm: number;
+  proposedAt: string;
+  /** Couriers who refused it: it is never proposed to them again. */
+  declinedBy: string[];
+}
+
+export type IncidentReason = 'absent' | 'refused' | 'address' | 'damaged';
+
+export interface DeliveryIncident {
+  reason: IncidentReason;
+  /** Proof of passage (photo of the place). */
+  photo: number | string;
+  at: string;
 }
 
 export type CheckoutStatus = 'awaiting_confirmation' | 'pending' | 'succeeded' | 'failed' | 'expired';

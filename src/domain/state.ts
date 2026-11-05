@@ -1,5 +1,28 @@
-import { authReduce, createAuthState, currentAccount, demoSellerAccount, DEMO_SELLER_ID, type AuthAction, type AuthState } from './auth';
+import {
+  authReduce,
+  createAuthState,
+  currentAccount,
+  demoCourierAccount,
+  demoSellerAccount,
+  DEMO_COURIER_ID,
+  DEMO_PHONE_COURIER,
+  DEMO_SELLER_ID,
+  type AuthAction,
+  type AuthState,
+} from './auth';
 import { getProduct } from './catalog';
+import {
+  cashDue,
+  courierCard,
+  courierReduce,
+  distanceKmFor,
+  FLEET_COURIER,
+  missionIdFor,
+  missionTab,
+  type CourierAction,
+  type CourierSpace,
+} from './courier';
+import { seedCourierOrders, seedCourierSpace, withCourierHistory } from './courierSeed';
 import { applyOrderEvent, receiptCodeFor, type OrderEvent } from './orderMachine';
 import { detectOperator } from './paymentProvider';
 import { rememberQuery } from './search';
@@ -9,13 +32,14 @@ import { summarizeCart, splitDiscount } from './pricing';
 import type {
   CartLine,
   Checkout,
+  Courier,
   DomainEvent,
   Order,
   PaymentFailureReason,
   PaymentMethod,
 } from './types';
 
-export const STATE_VERSION = 5;
+export const STATE_VERSION = 6;
 
 /** Mobile Money request lifetime shown on C4 ("La demande expire dans 01:45"). */
 export const MOMO_REQUEST_TTL_MS = 105_000;
@@ -44,7 +68,7 @@ export type SocialToggle = 'liked' | 'saved' | 'reposted' | 'following' | 'wishl
 /** Recent searches seeded from Figma E4. */
 export const SEED_RECENT_SEARCHES = ['Chaussures sport', 'JBL Go 3'];
 
-export type AppMode = 'buyer' | 'seller';
+export type AppMode = 'buyer' | 'seller' | 'courier';
 
 export interface AppState {
   version: number;
@@ -65,6 +89,8 @@ export interface AppState {
   auth: AuthState;
   /** US-10 à US-14: one seller space per account (shop, KYC, catalogue, payouts). */
   seller: Record<string, SellerSpace>;
+  /** US-15 à US-19: one courier space per account (vehicle, KYC, availability, cash paid back). */
+  courier: Record<string, CourierSpace>;
   /** Which app the signed-in account is using (V12 "Passer en mode acheteur"). */
   mode: AppMode;
   /** Last rejected action, for UI feedback. Never persisted as business state. */
@@ -85,6 +111,16 @@ export type Action =
   | { type: 'seller/orderEvent'; orderId: string; event: Extract<OrderEvent, { type: 'seller.start_preparing' | 'seller.mark_ready' }>; at: string }
   /** Demo only (V7): plays the courier typing the pick-up code. */
   | { type: 'seller/demoCourierPickup'; orderId: string; at: string }
+  | CourierAction
+  /** Courier app (L4–L9): same order machine, restricted to the courier's own missions. */
+  | {
+      type: 'courier/orderEvent';
+      orderId: string;
+      event: Extract<OrderEvent, { type: 'courier.accept' | 'courier.collect' | 'courier.arrive' | 'courier.confirm_delivery' | 'courier.report_incident' }>;
+      at: string;
+    }
+  /** L4 "Refuser": the mission goes to another courier. */
+  | { type: 'courier/decline'; orderId: string; at: string }
   | { type: 'app/setMode'; mode: AppMode; at: string }
   | { type: 'checkout/pay'; at: string }
   | {
@@ -141,6 +177,7 @@ export function createInitialState(now: string): AppState {
     },
   };
   const sellerSeed = seedSellerOrders(now);
+  const courierSeed = seedCourierOrders(now);
   return {
     version: STATE_VERSION,
     cart: [
@@ -158,6 +195,7 @@ export function createInitialState(now: string): AppState {
     },
     checkouts: {
       [SELLER_CHECKOUT_ID]: sellerSeed.checkout,
+      ...Object.fromEntries(courierSeed.checkouts.map((c) => [c.id, c])),
       'CK-0': {
         id: 'CK-0',
         orderIds: [past.id],
@@ -169,14 +207,16 @@ export function createInitialState(now: string): AppState {
         attempt: 1,
       },
     },
-    orders: { [past.id]: past, ...sellerSeed.orders },
-    orderSeq: 24868,
+    orders: withCourierHistory({ [past.id]: past, ...sellerSeed.orders, ...courierSeed.orders }),
+    // New purchases are numbered after the seeded orders (YY-24790 to YY-24875).
+    orderSeq: 24880,
     checkoutSeq: 1,
     events: [{ id: 'EV-1', at: now, actor: 'system', type: 'demo.seeded' }],
     social: { liked: [], saved: [], reposted: [], following: ['mama-luka-mode'], wishlist: [] },
     search: { recent: [...SEED_RECENT_SEARCHES] },
     auth: createAuthState(),
     seller: { [DEMO_SELLER_ID]: seedSellerSpace(now) },
+    courier: { [DEMO_COURIER_ID]: seedCourierSpace(now) },
     mode: 'buyer',
   };
 }
@@ -189,8 +229,9 @@ export function restoreState(saved: unknown, now: string): AppState {
   const s = saved as Partial<AppState> | null;
   if (!s || typeof s !== 'object' || typeof s.version !== 'number') return createInitialState(now);
   if (s.version === STATE_VERSION) return { ...(s as AppState), lastError: undefined };
+  if (s.version === 5 && s.auth && s.seller) return toV6(s as AppState, now);
   if ((s.version === 2 || s.version === 3) && s.social) {
-    return toV5(
+    return toV6(toV5(
       {
         ...(s as AppState),
         social: { ...s.social, wishlist: s.social.wishlist ?? [] },
@@ -199,9 +240,9 @@ export function restoreState(saved: unknown, now: string): AppState {
         auth: createAuthState(),
       },
       now,
-    );
+    ), now);
   }
-  if (s.version === 4 && s.auth) return toV5(s as AppState, now);
+  if (s.version === 4 && s.auth) return toV6(toV5(s as AppState, now), now);
   return createInitialState(now);
 }
 
@@ -213,7 +254,7 @@ function toV5(s: AppState, now: string): AppState {
   for (const [id, o] of Object.entries(seed.orders)) if (!orders[id]) orders[id] = o;
   return {
     ...s,
-    version: STATE_VERSION,
+    version: 5,
     orders,
     checkouts: { ...s.checkouts, [SELLER_CHECKOUT_ID]: s.checkouts[SELLER_CHECKOUT_ID] ?? seed.checkout },
     auth: s.auth.accounts[DEMO_SELLER_ID]
@@ -225,11 +266,35 @@ function toV5(s: AppState, now: string): AppState {
   };
 }
 
+/** v6 adds the courier app: seeded courier account, space and missions; past deliveries become Patrick's missions. */
+function toV6(s: AppState, now: string): AppState {
+  const seed = seedCourierOrders(now);
+  const orders: Record<string, Order> = { ...s.orders };
+  for (const [id, o] of Object.entries(seed.orders)) if (!orders[id]) orders[id] = o;
+  const checkouts = { ...s.checkouts };
+  for (const c of seed.checkouts) if (!checkouts[c.id]) checkouts[c.id] = c;
+  // A v5 account may already use the demo courier's number: then the demo courier is not added.
+  const phoneTaken = Object.values(s.auth.accounts).some((a) => a.phone === DEMO_PHONE_COURIER && a.id !== DEMO_COURIER_ID);
+  const auth = s.auth.accounts[DEMO_COURIER_ID] || phoneTaken ? s.auth : { ...s.auth, accounts: { ...s.auth.accounts, [DEMO_COURIER_ID]: demoCourierAccount() } };
+  return {
+    ...s,
+    version: STATE_VERSION,
+    orders: withCourierHistory(orders),
+    checkouts,
+    orderSeq: Math.max(s.orderSeq, 24880),
+    auth,
+    courier: s.courier ?? (phoneTaken ? {} : { [DEMO_COURIER_ID]: seedCourierSpace(now) }),
+    lastError: undefined,
+  };
+}
+
 /** Pure reducer: the only place where business state changes. */
 export function reducer(state: AppState, action: Action): AppState {
   if (action.type.startsWith('auth/')) return reduceAuth(state, action as AuthAction & { at?: string });
   if (action.type.startsWith('seller/') && action.type !== 'seller/orderEvent' && action.type !== 'seller/demoCourierPickup')
     return reduceSeller(state, action as SellerAction);
+  if (action.type.startsWith('courier/') && action.type !== 'courier/orderEvent' && action.type !== 'courier/decline')
+    return reduceCourier(state, action as CourierAction);
   switch (action.type) {
     case 'cart/add': {
       const product = getProduct(action.productId);
@@ -357,7 +422,16 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'order/event': {
       const order = state.orders[action.orderId];
       if (!order) return reject(state, 'NOT_FOUND', 'Commande introuvable.', action.at);
-      const result = applyOrderEvent(order, action.event, action.at);
+      // Parcel ready: the dispatcher proposes the mission to the best available courier (L4).
+      const event: OrderEvent =
+        action.event.type === 'seller.mark_ready' && !action.event.courier
+          ? {
+              ...action.event,
+              courier: dispatchCourier(state, []),
+              mission: { id: missionIdFor(order.id), distanceKm: distanceKmFor(order.id), proposedAt: action.at, declinedBy: [] },
+            }
+          : action.event;
+      const result = applyOrderEvent(order, event, action.at);
       if (!result.ok) return reject(state, result.error.code, result.error.message, action.at);
       let next: AppState = {
         ...state,
@@ -389,16 +463,33 @@ export function reducer(state: AppState, action: Action): AppState {
       return reducer(next, { type: 'order/event', orderId: order.id, event: { type: 'courier.collect', code: pickupCodeFor(order.id) }, actor: 'courier', at: action.at });
     }
 
+    case 'courier/orderEvent': {
+      const me = activeCourierSpace(state);
+      const order = state.orders[action.orderId];
+      if (!me || me.status !== 'verified') return reject(state, 'NOT_COURIER', 'Ton compte livreur doit être validé pour livrer.', action.at);
+      if (!order || order.courier?.id !== me.accountId) return reject(state, 'NOT_FOUND', 'Mission introuvable.', action.at);
+      return reducer(state, { type: 'order/event', orderId: order.id, event: action.event, actor: 'courier', at: action.at });
+    }
+
+    case 'courier/decline': {
+      const me = activeCourierSpace(state);
+      const order = state.orders[action.orderId];
+      if (!me || !order || order.courier?.id !== me.accountId) return reject(state, 'NOT_FOUND', 'Mission introuvable.', action.at);
+      const next = dispatchCourier(state, [...(order.mission?.declinedBy ?? []), me.accountId]);
+      return reducer(state, { type: 'order/event', orderId: order.id, event: { type: 'courier.decline', by: me.accountId, next }, actor: 'courier', at: action.at });
+    }
+
     case 'app/setMode': {
       if (action.mode === state.mode) return state;
       if (action.mode === 'seller' && !canUseSellerMode(state)) return reject(state, 'NOT_SELLER', 'Ouvre d’abord ta boutique.', action.at);
+      if (action.mode === 'courier' && !canUseCourierMode(state)) return reject(state, 'NOT_COURIER', 'Inscris-toi d’abord comme livreur.', action.at);
       return { ...state, mode: action.mode };
     }
 
     case 'demo/reset': {
       // Resets the shopping demo, not the accounts or the session; the seeded seller gets its shop back.
       const fresh = createInitialState(action.at);
-      return { ...fresh, auth: state.auth, mode: state.mode, seller: { ...state.seller, ...fresh.seller } };
+      return { ...fresh, auth: state.auth, mode: state.mode, seller: { ...state.seller, ...fresh.seller }, courier: { ...state.courier, ...fresh.courier } };
     }
     default:
       return state;
@@ -412,10 +503,11 @@ function reduceAuth(state: AppState, action: AuthAction & { at?: string }): AppS
   const before = state.auth.session?.id;
   const after = r.auth.session;
   // A new session opens on the app the account uses: sellers land on their dashboard (V4).
+  const roles = after ? (r.auth.accounts[after.accountId]?.roles ?? []) : [];
   let mode: AppMode =
-    after && after.id !== before ? (r.auth.accounts[after.accountId]?.roles.includes('seller') ? 'seller' : 'buyer') : after ? state.mode : 'buyer';
-  // A8 "Vendeur": the new seller lands in the seller app, on "Ouvre ta boutique" (V1).
-  if (action.type === 'auth/chooseRole' && action.role === 'seller') mode = 'seller';
+    after && after.id !== before ? (roles.includes('seller') ? 'seller' : roles.includes('courier') ? 'courier' : 'buyer') : after ? state.mode : 'buyer';
+  // A8 "Vendeur" / "Livreur": the new account lands in that app, on V1 or L1.
+  if (action.type === 'auth/chooseRole' && action.role !== 'buyer') mode = action.role;
   return {
     ...state,
     auth: r.auth,
@@ -623,7 +715,9 @@ export function canUseSellerMode(state: AppState): boolean {
 }
 
 export function effectiveMode(state: AppState): AppMode {
-  return state.mode === 'seller' && canUseSellerMode(state) ? 'seller' : 'buyer';
+  if (state.mode === 'seller' && canUseSellerMode(state)) return 'seller';
+  if (state.mode === 'courier' && canUseCourierMode(state)) return 'courier';
+  return 'buyer';
 }
 
 /** Paid orders of the seller's shop, most recent first (V5). */
@@ -651,5 +745,69 @@ function reduceSeller(state: AppState, action: SellerAction): AppState {
   if (action.type === 'seller/submitKyc') next = reduceAuth(next, { type: 'auth/requestRole', role: 'seller', at: action.at });
   if (action.type === 'seller/demoApprove' && acc.pendingRoles.includes('seller'))
     next = reduceAuth(next, { type: 'auth/demoGrantRole', role: 'seller', at: action.at });
+  return next;
+}
+
+/* ---------- Courier ---------- */
+
+/** Courier space of the signed-in account, if L1 was saved. */
+export function activeCourierSpace(state: AppState): CourierSpace | undefined {
+  const id = state.auth.session?.accountId;
+  return id ? state.courier[id] : undefined;
+}
+
+/** Courier app reachable: L1 saved, or the courier role granted or requested (A8 "Livreur"). */
+export function canUseCourierMode(state: AppState): boolean {
+  const acc = currentAccount(state.auth);
+  if (!acc) return false;
+  return !!state.courier[acc.id] || acc.roles.includes('courier') || acc.pendingRoles.includes('courier');
+}
+
+/** Every mission ever proposed to this courier (and still theirs). */
+export function courierMissions(state: AppState, accountId: string | undefined): Order[] {
+  if (!accountId) return [];
+  return Object.values(state.orders).filter((o) => o.mission && o.courier?.id === accountId);
+}
+
+/**
+ * Dispatcher (mock): the verified, available courier with the fewest missions
+ * in progress, the most recently available first; otherwise the simulated
+ * YA YO fleet, so a parcel is never left without a courier.
+ */
+export function dispatchCourier(state: AppState, exclude: string[]): Courier {
+  const candidates = Object.values(state.courier)
+    .filter((c) => c.status === 'verified' && c.available && !exclude.includes(c.accountId))
+    .map((c) => ({ c, account: state.auth.accounts[c.accountId] }))
+    .filter((x) => x.account && x.account.status === 'active')
+    .map((x) => ({ ...x, load: courierMissions(state, x.c.accountId).filter((o) => missionTab(o) === 'active').length }))
+    .sort((a, b) => a.load - b.load || ((a.c.availableSince ?? '') < (b.c.availableSince ?? '') ? 1 : -1));
+  const best = candidates[0];
+  return best ? courierCard(best.account!, best.c) : FLEET_COURIER;
+}
+
+function reduceCourier(state: AppState, action: CourierAction): AppState {
+  const acc = currentAccount(state.auth);
+  if (!acc) return reject(state, 'NO_SESSION', 'Connecte-toi d’abord.', action.at);
+  const space = state.courier[acc.id];
+  const due = cashDue(courierMissions(state, acc.id), space?.remittances ?? []);
+  const r = courierReduce(space, action, { accountId: acc.id, due });
+  if (!r.ok) return reject(state, r.code, r.message, action.at);
+  let next: AppState = {
+    ...state,
+    courier: { ...state.courier, [acc.id]: r.space },
+    lastError: undefined,
+    events: r.event ? log(state, { at: action.at, actor: 'courier', type: r.event }) : state.events,
+  };
+  // L2 files the courier request; the demo approval plays the YA YO admin.
+  if (action.type === 'courier/submitDocs') next = reduceAuth(next, { type: 'auth/requestRole', role: 'courier', at: action.at });
+  if (action.type === 'courier/demoApprove' && acc.pendingRoles.includes('courier'))
+    next = reduceAuth(next, { type: 'auth/demoGrantRole', role: 'courier', at: action.at });
+  // Going offline (L12) hands the proposals still waiting to other couriers.
+  if (action.type === 'courier/setAvailable' && !action.available) {
+    for (const o of courierMissions(next, acc.id).filter((m) => missionTab(m) === 'proposed')) {
+      next = reducer(next, { type: 'courier/decline', orderId: o.id, at: action.at });
+    }
+    next = { ...next, lastError: undefined };
+  }
   return next;
 }

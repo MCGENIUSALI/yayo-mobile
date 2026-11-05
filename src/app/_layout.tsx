@@ -71,6 +71,9 @@ function RootStack() {
       <Stack.Protected guard={gate === 'app' && mode === 'seller'}>
         <Stack.Screen name="vendeur/(onglets)" />
       </Stack.Protected>
+      <Stack.Protected guard={gate === 'app' && mode === 'courier'}>
+        <Stack.Screen name="livreur/(onglets)" />
+      </Stack.Protected>
       <Stack.Protected guard={gate === 'app'}>
         <Stack.Screen name="vendeur/creer" />
         <Stack.Screen name="vendeur/verification" />
@@ -80,6 +83,14 @@ function RootStack() {
         <Stack.Screen name="vendeur/remise/[id]" />
         <Stack.Screen name="vendeur/produit/nouveau" />
         <Stack.Screen name="vendeur/produit/[id]" />
+        <Stack.Screen name="livreur/inscription" />
+        <Stack.Screen name="livreur/documents" />
+        <Stack.Screen name="livreur/statut" options={{ gestureEnabled: false }} />
+        <Stack.Screen name="livreur/mission/[id]" />
+        <Stack.Screen name="livreur/remise/[id]" />
+        <Stack.Screen name="livreur/livree/[id]" options={{ gestureEnabled: false, animation: 'fade_from_bottom' }} />
+        <Stack.Screen name="livreur/incident/[id]" />
+        <Stack.Screen name="livreur/cash" />
         <Stack.Screen name="produit/[id]" />
         <Stack.Screen name="panier" />
         <Stack.Screen name="achat/livraison" />
