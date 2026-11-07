@@ -39,3 +39,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Résultat local du script de vérification de l’API
+api-check.json

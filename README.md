@@ -105,3 +105,22 @@ Historique : ce code vient du dossier `mobile/` de [yayo-dashboard](https://gith
 - **SV4** statistiques et commentaires à modérer, **SV8** tous les commentaires (répondre, épingler, masquer, bloquer l'auteur), **SV9–SV9b** contenu masqué par la modération, contestation ou correction, **SV10** guide qualité, **SV11** performance par période, **SV12–SV13** collections (affichées sur la page boutique), **SV14–SV15** story 24 h, **SV16** programmer un live, **SV17** salle de live, **SV18** fin du live.
 - Règles dans `src/domain/content.ts`, testées (`content.test.ts`).
 - Mode démo, sans serveur : les vidéos et photos restent sur le téléphone ; l'interruption d'envoi (SV6) ne peut pas arriver. La réponse de YA YO à une contestation se simule par deux boutons. Le live est une salle simulée : aucune vidéo n'est diffusée, il n'y a pas de spectateurs réels (0 affiché) et seules les vraies commandes passées dans l'app pendant le live sont comptées ; le replay sera proposé avec le serveur. Les chiffres des contenus de démonstration (vues, ventes) sont des valeurs de départ ; les vues, clics et partages faits dans l'app s'y ajoutent. Vues du profil et nouveaux abonnés ne sont pas affichés faute de données. Un produit créé dans l'espace vendeur peut être lié, mais n'apparaît pas encore sur la publication côté acheteur (il n'a pas de fiche acheteur).
+
+## Serveur YA YO (en cours)
+
+L’app tourne en mode démo tant que `EXPO_PUBLIC_API_URL` n’est pas défini. La couche serveur est dans `src/api/` :
+
+- `client.ts` : appels HTTP, jeton JWT (gardé dans le trousseau du téléphone), renouvellement unique sur 401, messages d’erreur en français.
+- `endpoints.ts` : les routes de l’API (compte, adresses, favoris, catalogue, panier, commandes, litige, vendeur, photos, contenus, abonnements, collections), d’après sa description OpenAPI. Les routes livreur et la remise ne sont pas branchées : le modèle de livraison n’est pas encore décidé.
+- `mappers.ts` : conversion des réponses vers les modèles de l’app. La description ne détaille pas les réponses ; les conversions acceptent les formes NestJS habituelles et seront resserrées sur les vraies réponses.
+
+**Aucun écran n’appelle encore le serveur.** Le paiement Mobile Money n’existe pas dans l’API et reste simulé.
+
+Pour relever la forme réelle des réponses, depuis un ordinateur qui joint le serveur :
+
+```bash
+npm run api:check                              # lectures publiques
+npm run api:check -- --phone +243812345678     # + connexion par SMS (envoie un vrai SMS, demande le code)
+```
+
+Le résultat va dans `api-check.json` (sans les jetons).
