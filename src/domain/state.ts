@@ -28,6 +28,8 @@ import { applyOrderEvent, receiptCodeFor, type OrderEvent } from './orderMachine
 import { detectOperator } from './paymentProvider';
 import { rememberQuery } from './search';
 import { pickupCodeFor, revenue, sellerReduce, type SellerAction, type SellerSpace } from './seller';
+import { posts } from './feed';
+import { contentReduce, seedContent, type ContentAction, type ContentState } from './content';
 import { seedSellerOrders, seedSellerSpace, SELLER_CHECKOUT_ID } from './sellerSeed';
 import { summarizeCart, splitDiscount } from './pricing';
 import type {
@@ -43,7 +45,7 @@ import type {
   PaymentMethod,
 } from './types';
 
-export const STATE_VERSION = 7;
+export const STATE_VERSION = 8;
 
 /** Mobile Money request lifetime shown on C4 ("La demande expire dans 01:45"). */
 export const MOMO_REQUEST_TTL_MS = 105_000;
@@ -65,6 +67,12 @@ export interface SocialState {
   following: string[];
   /** Product favourites (heart on B2, B4, B5). */
   wishlist: string[];
+  /** SC6: saved posts sorted into named folders ("Cadeaux", "Audio"…). */
+  folders: Record<string, string[]>;
+  /** SC5 "Pas intéressé": left out of « Pour toi ». */
+  hiddenPosts: string[];
+  /** SC5 "Signaler la publication": sent to the YA YO moderators. */
+  reported: string[];
 }
 
 export type SocialToggle = 'liked' | 'saved' | 'reposted' | 'following' | 'wishlist';
@@ -101,6 +109,8 @@ export interface AppState {
   addressBook: Record<string, AddressBook>;
   /** D17: conversation with the support, per account. */
   support: Record<string, SupportMessage[]>;
+  /** US-24 à US-32 (sellers' contents) and SC4 (comments). */
+  content: ContentState;
   /** Last rejected action, for UI feedback. Never persisted as business state. */
   lastError?: { code: string; message: string; at: string };
 }
@@ -111,6 +121,11 @@ export type Action =
   | { type: 'cart/remove'; productId: string; color: string; at: string }
   | { type: 'draft/update'; patch: Partial<CheckoutDraft> }
   | { type: 'social/toggle'; list: SocialToggle; id: string; at: string }
+  | { type: 'social/hidePost'; postId: string }
+  | { type: 'social/report'; postId: string; at: string }
+  /** SC6: puts a saved post in a folder (null takes it out of any folder). */
+  | { type: 'social/folder'; postId: string; folder: string | null }
+  | ContentAction
   | { type: 'search/remember'; query: string; at: string }
   | { type: 'search/clearRecent'; at: string }
   | (AuthAction & { at?: string })
@@ -239,7 +254,7 @@ export function createInitialState(now: string): AppState {
     orderSeq: 24880,
     checkoutSeq: 1,
     events: [{ id: 'EV-1', at: now, actor: 'system', type: 'demo.seeded' }],
-    social: { liked: [], saved: [], reposted: [], following: ['mama-luka-mode'], wishlist: [] },
+    social: { liked: [], saved: [], reposted: [], following: ['mama-luka-mode'], wishlist: [], folders: {}, hiddenPosts: [], reported: [] },
     search: { recent: [...SEED_RECENT_SEARCHES] },
     auth: createAuthState(),
     seller: { [DEMO_SELLER_ID]: seedSellerSpace(now) },
@@ -247,6 +262,7 @@ export function createInitialState(now: string): AppState {
     mode: 'buyer',
     addressBook: { 'U-1': { items: demoAddresses.map((a) => ({ ...a })), defaultId: 'home' } },
     support: {},
+    content: seedContent(now),
   };
 }
 
@@ -258,10 +274,11 @@ export function restoreState(saved: unknown, now: string): AppState {
   const s = saved as Partial<AppState> | null;
   if (!s || typeof s !== 'object' || typeof s.version !== 'number') return createInitialState(now);
   if (s.version === STATE_VERSION) return { ...(s as AppState), lastError: undefined };
-  if (s.version === 6 && s.auth && s.seller) return toV7(s as AppState);
-  if (s.version === 5 && s.auth && s.seller) return toV7(toV6(s as AppState, now));
+  if (s.version === 7 && s.auth && s.seller) return toV8(s as AppState, now);
+  if (s.version === 6 && s.auth && s.seller) return toV8(toV7(s as AppState), now);
+  if (s.version === 5 && s.auth && s.seller) return toV8(toV7(toV6(s as AppState, now)), now);
   if ((s.version === 2 || s.version === 3) && s.social) {
-    return toV7(toV6(toV5(
+    return toV8(toV7(toV6(toV5(
       {
         ...(s as AppState),
         social: { ...s.social, wishlist: s.social.wishlist ?? [] },
@@ -270,9 +287,9 @@ export function restoreState(saved: unknown, now: string): AppState {
         auth: createAuthState(),
       },
       now,
-    ), now));
+    ), now)), now);
   }
-  if (s.version === 4 && s.auth) return toV7(toV6(toV5(s as AppState, now), now));
+  if (s.version === 4 && s.auth) return toV8(toV7(toV6(toV5(s as AppState, now), now)), now);
   return createInitialState(now);
 }
 
@@ -322,9 +339,20 @@ function toV6(s: AppState, now: string): AppState {
 function toV7(s: AppState): AppState {
   return {
     ...s,
-    version: STATE_VERSION,
+    version: 7,
     addressBook: s.addressBook ?? (s.auth.accounts['U-1'] ? { 'U-1': { items: demoAddresses.map((a) => ({ ...a })), defaultId: 'home' } } : {}),
     support: s.support ?? {},
+    lastError: undefined,
+  };
+}
+
+/** v8 adds the sellers' contents (US-24 à US-32), comments and saved folders (SC4–SC6). */
+function toV8(s: AppState, now: string): AppState {
+  return {
+    ...s,
+    version: STATE_VERSION,
+    social: { ...s.social, folders: s.social.folders ?? {}, hiddenPosts: s.social.hiddenPosts ?? [], reported: s.social.reported ?? [] },
+    content: s.content ?? seedContent(now),
     lastError: undefined,
   };
 }
@@ -337,6 +365,8 @@ export function reducer(state: AppState, action: Action): AppState {
     return reduceSeller(state, action as SellerAction);
   if (action.type.startsWith('courier/') && action.type !== 'courier/orderEvent' && action.type !== 'courier/decline')
     return reduceCourier(state, action as CourierAction);
+  if (action.type.startsWith('content/') || action.type.startsWith('collection/') || action.type.startsWith('comment/'))
+    return reduceContent(state, action as ContentAction);
   switch (action.type) {
     case 'cart/add': {
       // A9: adding to the cart needs an account; the app resumes the add after sign-in.
@@ -614,6 +644,33 @@ export function reducer(state: AppState, action: Action): AppState {
         addressBook: { ...state.addressBook, ...fresh.addressBook },
         support: state.support,
       };
+    }
+
+    case 'social/hidePost':
+      return state.social.hiddenPosts.includes(action.postId)
+        ? state
+        : { ...state, social: { ...state.social, hiddenPosts: [...state.social.hiddenPosts, action.postId] } };
+
+    case 'social/report':
+      if (!state.auth.session) return reject(state, 'NOT_SIGNED_IN', 'Connecte-toi pour signaler une publication.', action.at);
+      if (state.social.reported.includes(action.postId)) return state;
+      return {
+        ...state,
+        social: { ...state.social, reported: [...state.social.reported, action.postId], hiddenPosts: [...state.social.hiddenPosts, action.postId] },
+        events: log(state, { at: action.at, actor: 'buyer', type: 'post.reported', detail: action.postId }),
+      };
+
+    case 'social/folder': {
+      // SC6: a post lives in one folder at most; saving it is implied.
+      const folders: Record<string, string[]> = {};
+      for (const [name, ids] of Object.entries(state.social.folders)) {
+        const rest = ids.filter((id) => id !== action.postId);
+        if (rest.length || name === action.folder) folders[name] = rest;
+      }
+      const name = action.folder?.trim();
+      if (name) folders[name] = [...(folders[name] ?? []), action.postId];
+      const saved = name && !state.social.saved.includes(action.postId) ? [...state.social.saved, action.postId] : state.social.saved;
+      return { ...state, social: { ...state.social, folders, saved } };
     }
     default:
       return state;
@@ -941,6 +998,31 @@ function reduceCourier(state: AppState, action: CourierAction): AppState {
   return next;
 }
 
+/** US-24 à US-32 and SC4: builds the seller / author context, then applies the content rules. */
+function reduceContent(state: AppState, action: ContentAction): AppState {
+  const acc = currentAccount(state.auth);
+  const space = acc ? state.seller[acc.id] : undefined;
+  const postShop =
+    'postId' in action ? (state.content.items[action.postId]?.shopId ?? posts.find((p) => p.id === action.postId)?.shopId) : undefined;
+  const ctx = {
+    shopId: space?.shopId,
+    verified: space?.status === 'verified',
+    linkable: space ? space.products.filter((p) => p.status === 'online' && p.stock > 0).map((p) => p.id) : [],
+    account: acc ? { id: acc.id, name: acc.name } : undefined,
+    // A comment written from the shop's own account is the shop speaking (badge "Vendeur").
+    ownerShopName: space && postShop === space.shopId && state.mode === 'seller' ? space.profile.name : undefined,
+  };
+  const r = contentReduce(state.content, action, ctx);
+  if (!r.ok) return reject(state, r.code, r.message, action.at);
+  if (r.content === state.content) return state;
+  return {
+    ...state,
+    content: r.content,
+    lastError: undefined,
+    events: r.event ? log(state, { at: action.at, actor: space && ctx.shopId ? 'seller' : 'buyer', type: r.event, detail: r.id }) : state.events,
+  };
+}
+
 /** "YY-24880" → "LT-4880" (D5 "Litige #LT-0318"). */
 export function disputeIdFor(orderId: string): string {
   return `LT-${orderId.replace(/\D/g, '').slice(-4).padStart(4, '0')}`;
@@ -1044,9 +1126,17 @@ function deleteAccount(state: AppState, action: Extract<AuthAction, { type: 'aut
     return next;
   };
   const fresh = createInitialState(action.at);
+  // Comments stay readable under the post, without the author's name.
+  const comments = Object.fromEntries(
+    Object.entries(state.content.comments).map(([postId, list]) => [
+      postId,
+      list.map((c) => (c.authorId === acc.id ? { ...c, author: 'Utilisateur', authorId: undefined } : c)),
+    ]),
+  );
   return {
     ...state,
     auth: r.auth,
+    content: { ...state.content, comments },
     orders,
     addressBook: drop(state.addressBook),
     support: drop(state.support),

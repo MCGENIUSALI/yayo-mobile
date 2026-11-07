@@ -270,12 +270,12 @@ export interface Post {
   kind: PostKind;
   shopId: string;
   caption: string;
-  /** Video: local require() of the clip. Photo: unused. */
-  video?: number;
+  /** Video: local require() of the clip, or a URI picked by the seller. Photo: unused. */
+  video?: number | string;
   /** Images shown in the home feed card (carousel for photos, cover for videos). */
-  media: number[];
+  media: (number | string)[];
   /** Video: first frame, shown while the clip loads. */
-  poster?: number;
+  poster?: number | string;
   /** Products tagged in the post, first one is featured. */
   productIds: string[];
   /** Counts before the current buyer's own like / save / repost. */
