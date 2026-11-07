@@ -18,7 +18,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getShop } from '@/domain/catalog';
-import { followingFeed, formatCount, videoPosts } from '@/domain/feed';
+import { followingFeed, formatCount } from '@/domain/feed';
 import { socialCount, type SocialToggle } from '@/domain/state';
 import type { Post } from '@/domain/types';
 import { useStore } from '@/store/AppStore';
@@ -28,32 +28,41 @@ import { Button } from '@/ui/Button';
 import { useToast } from '@/ui/Feedback';
 import { haptic, PressableScale } from '@/ui/Pressable';
 import { QuickBuySheet } from '@/ui/QuickBuySheet';
-import { FollowBadge, FollowButton, ProductTag, sharePost, ShopAvatar } from '@/ui/Social';
+import { FollowBadge, FollowButton, ProductTag, ShopAvatar } from '@/ui/Social';
+import { CommentsSheet, ShareSheet, useFeed } from '@/ui/SocialSheets';
 import { Text } from '@/ui/Text';
 
 type FeedTab = 'following' | 'foryou';
 
-/** SC1 · Fil vidéo « Pour toi » (+ SC2 · Achat rapide depuis une vidéo). */
+/** SC1 · Fil vidéo « Pour toi » (+ SC2 · Achat rapide, SC4 · Commentaires, SC5 · Partager). */
 export default function VideoFeed() {
   const params = useLocalSearchParams<{ post?: string; tab?: string }>();
   const insets = useSafeAreaInsets();
-  const { state } = useStore();
+  const { state, dispatch } = useStore();
+  const feed = useFeed();
   const focused = useIsFocused();
   const [tab, setTab] = useState<FeedTab>(params.tab === 'abonnements' ? 'following' : 'foryou');
   const [height, setHeight] = useState(0);
   const [active, setActive] = useState(0);
   const [sheetProduct, setSheetProduct] = useState<string | null>(null);
   const [appActive, setAppActive] = useState(true);
+  const [commentsOn, setCommentsOn] = useState<Post | null>(null);
+  const [shareOn, setShareOn] = useState<Post | null>(null);
 
   useEffect(() => {
     const sub = RNAppState.addEventListener('change', (s) => setAppActive(s === 'active'));
     return () => sub.remove();
   }, []);
 
-  const data = useMemo(
-    () => (tab === 'foryou' ? videoPosts : followingFeed(videoPosts, state.social.following)),
-    [tab, state.social.following],
-  );
+  const data = useMemo(() => {
+    const videos = feed.filter((p) => p.kind === 'video');
+    return tab === 'foryou' ? videos : followingFeed(videos, state.social.following);
+  }, [feed, tab, state.social.following]);
+  const activeId = data[active]?.id;
+  // SV4 « Vues »: one view each time a clip becomes the visible one.
+  useEffect(() => {
+    if (activeId && focused) dispatch({ type: 'content/track', postId: activeId, metric: 'view' });
+  }, [activeId, focused, dispatch]);
   const initialIndex = Math.max(0, data.findIndex((p) => p.id === params.post));
 
   // Manual pause applies to the current clip only: scrolling away resets it.
@@ -102,7 +111,12 @@ export default function VideoFeed() {
               preload={Math.abs(index - active) <= 1}
               paused={pausedId === item.id}
               onTogglePause={() => setPausedId((id) => (id === item.id ? null : item.id))}
-              onBuy={(productId) => setSheetProduct(productId)}
+              onBuy={(productId) => {
+                dispatch({ type: 'content/track', postId: item.id, metric: 'click', productId });
+                setSheetProduct(productId);
+              }}
+              onComments={() => setCommentsOn(item)}
+              onShare={() => setShareOn(item)}
             />
           )}
         />
@@ -135,6 +149,8 @@ export default function VideoFeed() {
       </View>
 
       <QuickBuySheet productId={sheetProduct} onClose={() => setSheetProduct(null)} />
+      <CommentsSheet post={commentsOn} onClose={() => setCommentsOn(null)} resumeHref={{ pathname: '/fil', params: { post: commentsOn?.id ?? '' } }} />
+      <ShareSheet post={shareOn} onClose={() => setShareOn(null)} />
     </View>
   );
 }
@@ -174,6 +190,8 @@ function VideoPage({
   paused,
   onTogglePause,
   onBuy,
+  onComments,
+  onShare,
 }: {
   post: Post;
   height: number;
@@ -182,13 +200,16 @@ function VideoPage({
   paused: boolean;
   onTogglePause: () => void;
   onBuy: (productId: string) => void;
+  onComments: () => void;
+  onShare: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const { state, dispatch } = useStore();
   const toast = useToast();
   const reduced = useReducedMotion();
   const shop = getShop(post.shopId);
-  const featured = post.productIds[0];
+  const item = state.content.items[post.id];
+  const featured = item?.buyButton === false ? undefined : post.productIds[0];
 
   const player = useVideoPlayer(preload && post.video != null ? post.video : null, (p) => {
     p.loop = true;
@@ -262,7 +283,7 @@ function VideoPage({
           activeColor={color.bg.accent}
           onPress={() => toggle('liked')}
         />
-        <RailButton icon={MessageCircle} label="Commentaires" count={post.comments} onPress={() => toast('Les commentaires arrivent bientôt (SC4).')} />
+        <RailButton icon={MessageCircle} label="Commentaires" count={post.comments} onPress={onComments} />
         <RailButton
           icon={Bookmark}
           label="Enregistrer"
@@ -282,7 +303,7 @@ function VideoPage({
           activeColor={color.icon.success}
           onPress={() => toggle('reposted')}
         />
-        <RailButton icon={Share2} label="Partager" text="Partager" onPress={() => sharePost(post)} />
+        <RailButton icon={Share2} label="Partager" text="Partager" onPress={onShare} />
       </View>
 
       {/* Caption, product and actions */}
@@ -309,7 +330,10 @@ function VideoPage({
               label="Voir le produit"
               variant="ghost"
               style={[styles.flex, styles.lightBtn]}
-              onPress={() => router.push({ pathname: '/produit/[id]', params: { id: featured } })}
+              onPress={() => {
+                dispatch({ type: 'content/track', postId: post.id, metric: 'click', productId: featured });
+                router.push({ pathname: '/produit/[id]', params: { id: featured } });
+              }}
             />
             <Button label="Commander" variant="accent" haptic="medium" style={styles.flex} onPress={() => onBuy(featured)} />
           </View>

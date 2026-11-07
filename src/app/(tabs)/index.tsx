@@ -3,41 +3,49 @@ import { router } from 'expo-router';
 import {
   Bell,
   Bookmark,
-  ChevronRight,
+  Flag,
   Heart,
   House,
   MessageCircle,
   MoreHorizontal,
   Play,
+  Radio,
+  Repeat2,
   Search,
   Share2,
   Shirt,
+  ShoppingCart,
   SlidersHorizontal,
   Smartphone,
   Sparkles,
   Tag,
   type LucideIcon,
 } from 'lucide-react-native';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { FlatList, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getShop, products } from '@/domain/catalog';
-import { formatCount, posts } from '@/domain/feed';
-import { formatFC } from '@/domain/money';
+import { statusAt, type ContentItem } from '@/domain/content';
+import { followingFeed, formatCount } from '@/domain/feed';
+import { formatDayTime } from '@/domain/format';
+import { formatFC, formatUSD } from '@/domain/money';
 import { socialCount, type SocialToggle } from '@/domain/state';
 import type { CategoryId } from '@/domain/search';
 import type { Post, Product } from '@/domain/types';
 import { useStore } from '@/store/AppStore';
 import { duration, pressScale, spring } from '@/theme/motion';
 import { color, HIT, radius, space } from '@/theme/tokens';
+import { Button } from '@/ui/Button';
 import { CartButton } from '@/ui/CartButton';
 import { ProductImage } from '@/ui/Commerce';
-import { useEnter, useToast } from '@/ui/Feedback';
+import { useEnter } from '@/ui/Feedback';
+import { Segmented } from '@/ui/Form';
 import { haptic, PressableScale } from '@/ui/Pressable';
 import { QuickBuySheet } from '@/ui/QuickBuySheet';
-import { FollowButton, ProductTag, sharePost, ShopAvatar } from '@/ui/Social';
+import { FollowButton, ShopAvatar } from '@/ui/Social';
+import { CommentsSheet, ShareSheet, useFeed } from '@/ui/SocialSheets';
 import { Badge } from '@/ui/Status';
 import { Text } from '@/ui/Text';
 
@@ -49,11 +57,24 @@ const CATEGORIES: { label: string; icon: LucideIcon; id: CategoryId }[] = [
   { label: 'Promo', icon: Tag, id: 'promos' },
 ];
 
-/** B1 · Accueil: search, categories, promo, shop feed, then the catalogue grid. */
+type HomeTab = 'foryou' | 'following' | 'lives';
+
+/** B1 · Accueil + SC3: search, categories, promo, shop feed (Pour toi, Abonnements, Lives), then the catalogue grid. */
 export default function Home() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
+  const { state, dispatch } = useStore();
+  const feed = useFeed();
+  const [tab, setTab] = useState<HomeTab>('foryou');
   const [sheetProduct, setSheetProduct] = useState<string | null>(null);
+  const [commentsOn, setCommentsOn] = useState<Post | null>(null);
+  const [shareOn, setShareOn] = useState<Post | null>(null);
+  const data = useMemo(() => (tab === 'lives' ? [] : tab === 'following' ? followingFeed(feed, state.social.following) : feed), [tab, feed, state.social.following]);
+  const lives = useMemo(() => liveList(state.content.items), [state.content.items]);
+  const buy = (postId: string, productId: string) => {
+    dispatch({ type: 'content/track', postId, metric: 'click', productId });
+    setSheetProduct(productId);
+  };
   const cardW = (width - space.screen * 2 - space.md) / 2;
   const grid = Object.values(products);
 
@@ -83,7 +104,7 @@ export default function Home() {
       </View>
 
       <FlatList
-        data={posts}
+        data={data}
         keyExtractor={(p) => p.id}
         contentContainerStyle={{ paddingBottom: space.screen }}
         showsVerticalScrollIndicator={false}
@@ -129,26 +150,22 @@ export default function Home() {
             <PromoBanner />
 
             <View style={styles.sectionHead}>
-              <Text variant="h4" accessibilityRole="header">
-                Fil des boutiques
-              </Text>
-              <PressableScale
-                accessibilityRole="link"
-                accessibilityLabel="Abonnements, voir les vidéos des boutiques suivies"
-                onPress={() => router.push({ pathname: '/fil', params: { tab: 'abonnements' } })}
-                scaleTo={pressScale.icon}
-                hitSlop={8}
-                style={styles.link}
-              >
-                <Text variant="labelM" color={color.text.accent}>
-                  Abonnements
-                </Text>
-                <ChevronRight size={18} color={color.icon.accent} strokeWidth={2} />
-              </PressableScale>
+              <Segmented
+                value={tab}
+                onChange={setTab}
+                options={[
+                  { value: 'foryou', label: 'Pour toi' },
+                  { value: 'following', label: 'Abonnements' },
+                  { value: 'lives', label: 'Lives' },
+                ]}
+              />
             </View>
           </View>
         }
-        renderItem={({ item }) => <FeedPost post={item} width={width} onBuy={setSheetProduct} />}
+        ListEmptyComponent={tab === 'lives' ? <LivesList lives={lives} /> : <EmptyFeed following={tab === 'following'} onDiscover={() => setTab('foryou')} />}
+        renderItem={({ item }) => (
+          <FeedPost post={item} width={width} onBuy={(productId) => buy(item.id, productId)} onComments={() => setCommentsOn(item)} onShare={() => setShareOn(item)} />
+        )}
         ItemSeparatorComponent={() => <View style={{ height: space.lg }} />}
         ListFooterComponent={
           <View style={styles.gridWrap}>
@@ -164,6 +181,84 @@ export default function Home() {
         }
       />
       <QuickBuySheet productId={sheetProduct} onClose={() => setSheetProduct(null)} />
+      <CommentsSheet post={commentsOn} onClose={() => setCommentsOn(null)} resumeHref="/" />
+      <ShareSheet post={shareOn} onClose={() => setShareOn(null)} />
+    </View>
+  );
+}
+
+/** Lives of the shops: on air first, then the scheduled ones by start time. */
+function liveList(items: Record<string, ContentItem>): ContentItem[] {
+  const now = new Date().toISOString();
+  return Object.values(items)
+    .filter((i) => i.kind === 'live' && i.live && i.live.state !== 'ended' && statusAt(i, now) !== 'draft' && i.status !== 'hidden' && i.status !== 'draft')
+    .sort((a, b) => (a.live!.state === b.live!.state ? a.live!.startsAt.localeCompare(b.live!.startsAt) : a.live!.state === 'live' ? -1 : 1));
+}
+
+function EmptyFeed({ following, onDiscover }: { following: boolean; onDiscover: () => void }) {
+  return (
+    <View style={styles.empty}>
+      <Text variant="h4" align="center">
+        {following ? 'Aucune publication de tes abonnements' : 'Rien à afficher pour l’instant'}
+      </Text>
+      <Text variant="bodyM" color={color.text.secondary} align="center">
+        {following ? 'Suis des boutiques depuis « Pour toi » pour retrouver leurs photos et vidéos ici.' : 'Les publications masquées n’apparaissent plus dans ton fil.'}
+      </Text>
+      {following ? <Button label="Découvrir des boutiques" variant="outline" onPress={onDiscover} /> : null}
+    </View>
+  );
+}
+
+function LivesList({ lives }: { lives: ContentItem[] }) {
+  if (!lives.length) {
+    return (
+      <View style={styles.empty}>
+        <Radio size={32} color={color.icon.secondary} strokeWidth={2} />
+        <Text variant="h4" align="center">
+          Aucun live programmé
+        </Text>
+        <Text variant="bodyM" color={color.text.secondary} align="center">
+          Les boutiques annoncent leurs lives ici. Suis-les pour ne pas les manquer.
+        </Text>
+      </View>
+    );
+  }
+  return (
+    <View style={{ gap: space.md, paddingHorizontal: space.screen }}>
+      {lives.map((l) => {
+        const shop = getShop(l.shopId);
+        const onAir = l.live!.state === 'live';
+        return (
+          <PressableScale
+            key={l.id}
+            accessibilityRole="link"
+            accessibilityLabel={`${onAir ? 'En direct' : 'Live programmé'} : ${l.live!.title}, ${shop.name}`}
+            onPress={() => router.push({ pathname: '/boutique/[id]', params: { id: shop.id } })}
+            scaleTo={pressScale.card}
+            style={styles.live}
+          >
+            <View style={styles.liveCover}>
+              {l.media[0] ? <Image source={l.media[0]} style={StyleSheet.absoluteFill} contentFit="cover" /> : null}
+              <View style={[styles.liveBadge, { backgroundColor: onAir ? color.text.danger : 'rgba(10,10,11,0.72)' }]}>
+                <Text variant="caption" color={color.text.inverse}>
+                  {onAir ? 'EN DIRECT' : 'PROGRAMMÉ'}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.flex}>
+              <Text variant="labelL" numberOfLines={2}>
+                {l.live!.title}
+              </Text>
+              <Text variant="bodyS" color={color.text.secondary} numberOfLines={1}>
+                {shop.name}
+              </Text>
+              <Text variant="bodyS" color={onAir ? color.text.danger : color.text.secondary}>
+                {onAir ? `${formatCount(l.live!.viewers ?? 0)} spectateurs` : formatDayTime(l.live!.startsAt)}
+              </Text>
+            </View>
+          </PressableScale>
+        );
+      })}
     </View>
   );
 }
@@ -201,17 +296,31 @@ function PromoBanner() {
   );
 }
 
-/* ---------- Feed Post (1002:400) ---------- */
+/* ---------- Feed Post (1002:400, SC3 1055:443) ---------- */
 
-function FeedPost({ post, width, onBuy }: { post: Post; width: number; onBuy: (productId: string) => void }) {
+function FeedPost({
+  post,
+  width,
+  onBuy,
+  onComments,
+  onShare,
+}: {
+  post: Post;
+  width: number;
+  onBuy: (productId: string) => void;
+  onComments: () => void;
+  onShare: () => void;
+}) {
   const { state, dispatch } = useStore();
-  const toast = useToast();
   const reduced = useReducedMotion();
   const shop = getShop(post.shopId);
-  const featured = post.productIds[0];
+  const item = state.content.items[post.id];
+  const featured = post.productIds[0] ? products[post.productIds[0]] : undefined;
   const is = (list: SocialToggle) => state.social[list].includes(post.id);
   const toggle = (list: SocialToggle) => dispatch({ type: 'social/toggle', list, id: post.id });
   const mediaH = Math.round(width * (420 / 402));
+  const [page, setPage] = useState(0);
+  const pages = post.kind === 'video' ? post.media.slice(0, 1) : post.media;
 
   const burst = useSharedValue(0);
   const burstStyle = useAnimatedStyle(() => ({ opacity: burst.value, transform: [{ scale: 0.6 + burst.value * 0.6 }] }));
@@ -249,7 +358,7 @@ function FeedPost({ post, width, onBuy }: { post: Post; width: number; onBuy: (p
           </View>
         </PressableScale>
         <FollowButton shopId={shop.id} />
-        <PressableScale accessibilityLabel="Plus d’options" onPress={() => toast('Options : signaler, masquer (bientôt).')} scaleTo={pressScale.icon} style={styles.more}>
+        <PressableScale accessibilityLabel="Plus d’options" onPress={onShare} scaleTo={pressScale.icon} style={styles.more}>
           <MoreHorizontal size={22} color={color.icon.primary} strokeWidth={2} />
         </PressableScale>
       </View>
@@ -257,15 +366,33 @@ function FeedPost({ post, width, onBuy }: { post: Post; width: number; onBuy: (p
       <GestureDetector gesture={taps}>
         <View
           style={[styles.media, { height: mediaH }]}
-          accessible
-          accessibilityRole={post.kind === 'video' ? 'button' : 'image'}
-          accessibilityLabel={`${post.kind === 'video' ? 'Vidéo' : 'Photo'} de ${shop.name}`}
-          accessibilityHint={post.kind === 'video' ? 'Ouvre le fil vidéo' : 'Touche deux fois pour aimer'}
+          accessible={post.kind === 'video'}
+          accessibilityRole={post.kind === 'video' ? 'button' : undefined}
+          accessibilityLabel={post.kind === 'video' ? `Vidéo de ${shop.name}` : undefined}
+          accessibilityHint={post.kind === 'video' ? 'Ouvre le fil vidéo' : undefined}
         >
-          <Image source={post.media[0]} style={StyleSheet.absoluteFill} contentFit="cover" transition={160} />
-          <View style={styles.counter}>
+          <FlatList
+            data={pages}
+            horizontal
+            pagingEnabled
+            scrollEnabled={pages.length > 1}
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={(_, i) => String(i)}
+            onMomentumScrollEnd={(e) => setPage(Math.round(e.nativeEvent.contentOffset.x / width))}
+            getItemLayout={(_, i) => ({ length: width, offset: width * i, index: i })}
+            renderItem={({ item: m, index }) => (
+              <Image
+                source={m}
+                style={{ width, height: mediaH }}
+                contentFit="cover"
+                transition={160}
+                accessibilityLabel={post.kind === 'video' ? undefined : `Photo ${index + 1} sur ${pages.length} de ${shop.name}`}
+              />
+            )}
+          />
+          <View style={styles.counter} pointerEvents="none">
             <Text variant="labelS" color={color.text.inverse}>
-              {post.kind === 'video' ? 'Vidéo' : `1/${Math.max(post.media.length, 1)}`}
+              {post.kind === 'video' ? 'Vidéo' : `${page + 1}/${Math.max(pages.length, 1)}`}
             </Text>
           </View>
           {post.kind === 'video' ? (
@@ -290,27 +417,58 @@ function FeedPost({ post, width, onBuy }: { post: Post; width: number; onBuy: (p
           activeColor={color.bg.accent}
           onPress={() => toggle('liked')}
         />
-        <PostAction icon={MessageCircle} label="Commentaires" count={post.comments} onPress={() => toast('Les commentaires arrivent bientôt (SC4).')} />
-        <PostAction icon={Share2} label="Partager" onPress={() => sharePost(post)} />
+        <PostAction icon={MessageCircle} label="Commentaires" count={post.comments} onPress={onComments} />
+        <PostAction icon={Share2} label="Partager" onPress={onShare} />
+        <PostAction
+          icon={Repeat2}
+          label="Republier"
+          count={socialCount(post.reposts, is('reposted'))}
+          active={is('reposted')}
+          activeColor={color.icon.success}
+          onPress={onShare}
+        />
         <View style={styles.flex} />
         <PostAction
           icon={Bookmark}
           label="Enregistrer"
-          count={socialCount(post.saves, is('saved'))}
           active={is('saved')}
           activeColor={color.icon.primary}
           onPress={() => toggle('saved')}
         />
+        <PostAction icon={Flag} label="Signaler" onPress={onShare} />
       </View>
 
       <Text variant="bodyM" numberOfLines={3} style={styles.caption}>
-        <Text variant="labelM">{shop.name} </Text>
         {post.caption}
       </Text>
 
-      {featured ? (
-        <View style={styles.tagWrap}>
-          <ProductTag productId={featured} tone="light" onAdd={() => onBuy(featured)} />
+      {featured && item?.buyButton !== false ? (
+        <View style={styles.buyRow}>
+          <View style={styles.flex}>
+            <Text variant="priceS">{formatFC(featured.price)}</Text>
+            <Text variant="caption" color={color.text.tertiary}>
+              {formatUSD(featured.price)}
+            </Text>
+          </View>
+          <Button
+            label="Voir le produit"
+            variant="accent"
+            onPress={() => {
+              dispatch({ type: 'content/track', postId: post.id, metric: 'click', productId: featured.id });
+              router.push({ pathname: '/produit/[id]', params: { id: featured.id } });
+            }}
+          />
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel={featured.stock > 0 ? `Commander ${featured.shortName}` : `${featured.shortName}, en rupture`}
+            disabled={featured.stock <= 0}
+            onPress={() => onBuy(featured.id)}
+            haptic="medium"
+            scaleTo={pressScale.icon}
+            style={[styles.cartBtn, featured.stock <= 0 && { opacity: 0.4 }]}
+          >
+            <ShoppingCart size={22} color={color.icon.inverse} strokeWidth={2} />
+          </PressableScale>
         </View>
       ) : null}
     </View>
@@ -467,7 +625,12 @@ const styles = StyleSheet.create({
   actionsRow: { flexDirection: 'row', alignItems: 'center', gap: space.lg, paddingHorizontal: space.lg },
   action: { flexDirection: 'row', alignItems: 'center', gap: space.xs, minHeight: 36 },
   caption: { paddingHorizontal: space.lg },
-  tagWrap: { paddingHorizontal: space.lg, paddingTop: space.xs },
+  buyRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.lg, paddingTop: space.xs },
+  cartBtn: { width: 48, height: 48, borderRadius: radius.md, backgroundColor: color.bg.inverse, alignItems: 'center', justifyContent: 'center' },
+  empty: { alignItems: 'center', gap: space.md, paddingHorizontal: space.screen, paddingVertical: 32 },
+  live: { flexDirection: 'row', gap: space.md, backgroundColor: color.bg.surface, borderRadius: radius.lg, padding: space.sm, alignItems: 'center' },
+  liveCover: { width: 96, height: 128, borderRadius: radius.md, overflow: 'hidden', backgroundColor: color.bg.surfaceSunken },
+  liveBadge: { position: 'absolute', top: space.xs, left: space.xs, borderRadius: radius.full, paddingHorizontal: space.sm, paddingVertical: 2 },
   gridWrap: { padding: space.screen, gap: space.md },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.md },
   card: { backgroundColor: color.bg.surface, borderRadius: radius.lg, padding: space.sm, gap: space.sm },

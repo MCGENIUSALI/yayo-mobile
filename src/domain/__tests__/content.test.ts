@@ -125,6 +125,16 @@ describe('comments (SC4, SV4, SV8)', () => {
     expect(reducer(back, { type: 'comment/add', postId: 'P-go3', text: 'Bonjour', at: at(210) }).lastError?.code).toBe('BLOCKED');
   });
 
+  it('sends a reported comment to the seller queue, never one’s own', () => {
+    let s = signIn(createInitialState(T0), DEMO_PHONE_EXISTING);
+    s = reducer(s, { type: 'comment/report', postId: 'P-pulse', commentId: 'CM-3', at: at(10) });
+    expect(s.content.comments['P-pulse']!.find((c) => c.id === 'CM-3')!.review).toBe(true);
+    s = reducer(s, { type: 'comment/add', postId: 'P-pulse', text: 'Super', at: at(11) });
+    const mine = s.content.comments['P-pulse']!.at(-1)!.id;
+    expect(reducer(s, { type: 'comment/report', postId: 'P-pulse', commentId: mine, at: at(12) }).lastError?.code).toBe('OWN_COMMENT');
+    expect(reducer(createInitialState(T0), { type: 'comment/report', postId: 'P-pulse', commentId: 'CM-3', at: T0 }).lastError?.code).toBe('NOT_SIGNED_IN');
+  });
+
   it('needs an account', () => {
     expect(reducer(createInitialState(T0), { type: 'comment/add', postId: 'P-go3', text: 'Bonjour', at: T0 }).lastError?.code).toBe('NOT_SIGNED_IN');
   });
@@ -152,7 +162,7 @@ describe('collections, stories and lives (SV12–SV18)', () => {
     let s = seller();
     const live = { ...newDraft('live'), productIds: ['jbl-go-3', 'P-3'], live: { title: 'Soirée JBL', description: 'Offres en direct', startsAt: at(7200), notify: true } };
     s = reducer(s, { type: 'content/save', draft: live, mode: 'publish', at: at(10) });
-    const id = Object.values(s.content.items).find((i) => i.kind === 'live')!.id;
+    const id = Object.values(s.content.items).find((i) => i.kind === 'live' && i.createdAt === at(10))!.id;
     expect(s.content.items[id]!.live?.state).toBe('scheduled');
     s = run(
       s,

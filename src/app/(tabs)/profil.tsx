@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { Bike, Heart, Languages, LifeBuoy, LogOut, MapPin, RotateCcw, Store, Trash2, UserRound, Wallet } from 'lucide-react-native';
+import { Bike, Bookmark, Heart, Languages, LifeBuoy, LogOut, MapPin, RotateCcw, Store, Trash2, UserRound, Wallet } from 'lucide-react-native';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { currentAccount, displayTarget, initialsOf } from '@/domain/auth';
 import { activeCourierSpace, activeSellerSpace, buyerAddresses, canUseCourierMode, canUseSellerMode, confirmedOrders, type AppState } from '@/domain/state';
@@ -104,6 +104,12 @@ function ProfileScreen() {
             title="Moyens de paiement"
             value={lastOperator}
             onPress={() => toast('Tu choisis ton moyen de paiement à chaque commande. L’enregistrement arrive dans une prochaine version.')}
+          />
+          <MenuRow
+            icon={Bookmark}
+            title="Mes enregistrements"
+            value={state.social.saved.length ? String(state.social.saved.length) : undefined}
+            onPress={() => router.push('/enregistrements')}
           />
           <MenuRow
             icon={Heart}

@@ -88,6 +88,7 @@ function RootStack() {
         <Stack.Screen name="boutique/[id]" />
         <Stack.Screen name="fil" options={{ animation: 'fade', contentStyle: { backgroundColor: '#000' } }} />
         <Stack.Screen name="aide/index" />
+        <Stack.Screen name="enregistrements" />
         <Stack.Screen name="compte/supprime" options={{ gestureEnabled: false, animation: 'fade' }} />
       </Stack.Protected>
       <Stack.Protected guard={signedIn}>

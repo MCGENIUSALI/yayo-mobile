@@ -409,6 +409,25 @@ export function seedContent(now: string): ContentState {
         at: ago(160),
       },
     }),
+    item({
+      id: 'C-live',
+      shopId: 'jbl-store-kin',
+      kind: 'live',
+      status: 'scheduled',
+      caption: 'Soirée enceintes en direct',
+      media: [go3.poster ?? go3.media[0]!],
+      productIds: ['jbl-go-3', 'jbl-charge-5'],
+      createdAt: ago(6),
+      scheduledAt: new Date(ms(now) + 26 * 3_600_000).toISOString(),
+      live: {
+        title: 'Soirée enceintes en direct',
+        description: 'On teste le son des Go 3 et Charge 5 en direct, questions et commandes pendant le live.',
+        startsAt: new Date(ms(now) + 26 * 3_600_000).toISOString(),
+        notify: true,
+        state: 'scheduled',
+      },
+      stats: emptyStats(),
+    }),
   ];
   const c = (id: string, postId: string, author: string, text: string, h: number, extra: Partial<Comment> = {}): Comment => ({
     id,
@@ -468,6 +487,8 @@ export type ContentAction =
   | { type: 'collection/move'; id: string; by: -1 | 1; at: string }
   | { type: 'comment/add'; postId: string; text: string; replyTo?: string; at: string }
   | { type: 'comment/moderate'; postId: string; commentId: string; action: 'hide' | 'show' | 'pin' | 'unpin' | 'block' | 'keep'; at: string }
+  /** SC4 « Signaler »: the comment goes to the seller's moderation queue (SV8). */
+  | { type: 'comment/report'; postId: string; commentId: string; at: string }
   | { type: 'content/track'; postId: string; metric: 'view' | 'click' | 'share'; productId?: string; at: string };
 
 export interface ContentCtx {
@@ -546,6 +567,16 @@ export function contentReduce(c: ContentState, a: ContentAction, ctx: ContentCtx
       // A seller's reply settles the comment it answers.
       const updated = seller && a.replyTo ? list.map((x) => (x.id === a.replyTo ? { ...x, review: undefined } : x)) : list;
       return okC({ ...c, seq: c.seq + 1, comments: { ...c.comments, [a.postId]: [...updated, comment] } }, m.violations.length ? 'comment.masked' : 'comment.added', comment.id);
+    }
+
+    case 'comment/report': {
+      if (!ctx.account) return failC('NOT_SIGNED_IN', 'Connecte-toi pour signaler un commentaire.');
+      const list = c.comments[a.postId] ?? [];
+      const target = list.find((x) => x.id === a.commentId);
+      if (!target || target.status === 'blocked') return failC('NOT_FOUND', 'Commentaire introuvable.');
+      if (target.authorId === ctx.account.id) return failC('OWN_COMMENT', 'Tu ne peux pas signaler ton propre commentaire.');
+      const next = list.map((x) => (x.id === a.commentId ? { ...x, review: true } : x));
+      return okC({ ...c, comments: { ...c.comments, [a.postId]: next } }, 'comment.reported');
     }
 
     case 'comment/moderate': {
