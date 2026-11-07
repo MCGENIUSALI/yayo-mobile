@@ -96,6 +96,18 @@ function RootStack() {
         <Stack.Screen name="vendeur/verification" />
         <Stack.Screen name="vendeur/statut" options={{ gestureEnabled: false }} />
         <Stack.Screen name="vendeur/notifications" />
+        <Stack.Screen name="vendeur/boutique" />
+        <Stack.Screen name="vendeur/contenu/nouveau" />
+        <Stack.Screen name="vendeur/contenu/[id]" />
+        <Stack.Screen name="vendeur/contenu/commentaires/[id]" />
+        <Stack.Screen name="vendeur/contenu/masque/[id]" />
+        <Stack.Screen name="vendeur/contenu/guide" />
+        <Stack.Screen name="vendeur/contenu/performance" />
+        <Stack.Screen name="vendeur/contenu/story" />
+        <Stack.Screen name="vendeur/collections/index" />
+        <Stack.Screen name="vendeur/collections/edition" />
+        <Stack.Screen name="vendeur/live/nouveau" />
+        <Stack.Screen name="vendeur/live/[id]" options={{ gestureEnabled: false, contentStyle: { backgroundColor: '#000' } }} />
         <Stack.Screen name="vendeur/commande/[id]" />
         <Stack.Screen name="vendeur/remise/[id]" />
         <Stack.Screen name="vendeur/produit/nouveau" />

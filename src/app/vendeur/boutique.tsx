@@ -2,7 +2,6 @@ import { router } from 'expo-router';
 import { CircleHelp, Clock, Eye, LogOut, MapPin, ReceiptText, ShieldCheck, ShoppingBag, Store, Wallet } from 'lucide-react-native';
 import { useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { shops } from '@/domain/catalog';
 import { formatDay } from '@/domain/format';
 import { detectOperator } from '@/domain/paymentProvider';
@@ -19,6 +18,7 @@ import { EmptyState, MenuGroup, MenuRow } from '@/ui/Seller';
 import { Sheet } from '@/ui/Sheet';
 import { Badge } from '@/ui/Status';
 import { Text } from '@/ui/Text';
+import { TopAppBar } from '@/ui/TopAppBar';
 
 
 const validatedLabel = (iso: string) => {
@@ -26,26 +26,16 @@ const validatedLabel = (iso: string) => {
   return d === 'Aujourd’hui' || d === 'Hier' ? `Validée ${d.toLowerCase()}` : `Validée le ${d}`;
 };
 
-/** V12 · Ma boutique. */
+/** V12 · Ma boutique (opened from the Tableau since « Contenus » took its tab, US-26). */
 export default function MyShop() {
   const { shop, dispatch, state } = useSeller();
   const toast = useToast();
-  const insets = useSafeAreaInsets();
   const switchTo = useSwitchMode();
   const [payout, setPayout] = useState<string | null>(null);
   const [hours, setHours] = useState(false);
   const publicShop = shop && shop.status === 'verified' ? shops[shop.shopId] : undefined;
 
-  const header = (
-    <View style={[styles.header, { paddingTop: insets.top + space.lg }]}>
-      <Text variant="bodyM" color={color.text.secondary}>
-        Vendeur
-      </Text>
-      <Text variant="h1" accessibilityRole="header">
-        Ma boutique
-      </Text>
-    </View>
-  );
+  const header = <TopAppBar title="Ma boutique" />;
 
   const account = (
     <MenuGroup title="Compte">
@@ -170,7 +160,6 @@ export default function MyShop() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: color.bg.canvas },
-  header: { backgroundColor: color.bg.surface, paddingHorizontal: space.screen, paddingBottom: space.md, gap: space.xs },
   content: { padding: space.screen, paddingTop: space.sm, gap: space.xl },
   card: { backgroundColor: color.bg.surface, borderRadius: radius.lg, padding: space.lg, gap: space.md },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.md },

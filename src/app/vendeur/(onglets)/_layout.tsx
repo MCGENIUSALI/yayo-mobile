@@ -1,19 +1,18 @@
 import { Tabs } from 'expo-router/tabs';
-import { ChartColumn, Package, Store, Tag, Wallet } from 'lucide-react-native';
+import { ChartColumn, Package, Play, Tag, Wallet } from 'lucide-react-native';
 import { color } from '@/theme/tokens';
 import { BottomNavigation, type TabSpec } from '@/ui/BottomNav';
 
 /**
- * Seller app (Figma V4, V5, V8, V11, V12): Tableau, Commandes, Produits, Revenus, Boutique.
- * The "Contenus" tab decided for the content-management stories (US-26) will
- * replace "Boutique" once those screens are built; Boutique then opens from Tableau.
+ * Seller app (Figma V4, V5, V8, V11, SV1): Tableau, Commandes, Produits, Revenus, Contenus.
+ * « Contenus » replaced « Boutique » (US-26); Ma boutique opens from the Tableau header.
  */
 const TABS: TabSpec = {
   tableau: { label: 'Tableau', icon: ChartColumn },
   commandes: { label: 'Commandes', icon: Package },
   produits: { label: 'Produits', icon: Tag },
   revenus: { label: 'Revenus', icon: Wallet },
-  boutique: { label: 'Boutique', icon: Store },
+  contenus: { label: 'Contenus', icon: Play },
 };
 
 export const unstable_settings = { initialRouteName: 'tableau' };
@@ -28,7 +27,7 @@ export default function SellerTabsLayout() {
       <Tabs.Screen name="commandes" />
       <Tabs.Screen name="produits" />
       <Tabs.Screen name="revenus" />
-      <Tabs.Screen name="boutique" />
+      <Tabs.Screen name="contenus" />
     </Tabs>
   );
 }

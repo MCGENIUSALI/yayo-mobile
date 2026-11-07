@@ -66,7 +66,7 @@ Historique : ce code vient du dossier `mobile/` de [yayo-dashboard](https://gith
 - Le rôle vendeur n'est jamais accordé par l'app : V2 envoie la demande, la validation de l'équipe YA YO est simulée par un bouton « démo » sur V3. Un vendeur ne peut agir que sur les commandes de sa boutique ; le livreur confirme la collecte avec le code de remise.
 - On passe d'une app à l'autre depuis Profil (« Passer en mode vendeur ») et Ma boutique (« Passer en mode acheteur »). Une commande payée par un acheteur dans l'app arrive chez le vendeur de la boutique.
 - Démo : `89 765 4321` ouvre le compte de Grâce, vendeuse de JBL Store Kin (2 nouvelles commandes, historique de revenus). Le bouton « Ajouter » photo choisit une image de démo ; l'appareil photo et la galerie demandent `expo-image-picker` (compatible Expo Go), qui n'a pas pu être installé depuis l'environnement de développement.
-- Limites : les modifications du catalogue vendeur ne changent pas encore les fiches vues par les acheteurs, et une nouvelle boutique n'a pas encore de page publique ; il faut le serveur pour partager le catalogue. L'onglet Contenus (US-26) remplacera Boutique quand ses écrans seront codés.
+- Limites : les modifications du catalogue vendeur ne changent pas encore les fiches vues par les acheteurs, et une nouvelle boutique n'a pas encore de page publique ; il faut le serveur pour partager le catalogue. Ma boutique s'ouvre maintenant depuis l'icône boutique du Tableau : l'onglet Contenus a pris sa place.
 
 ## Espace livreur (US-15 à US-19)
 
@@ -80,9 +80,28 @@ Historique : ce code vient du dossier `mobile/` de [yayo-dashboard](https://gith
 
 ## Mon compte, annulation et support (US-06, US-09)
 
-- **D7 · Profil** : adresses, moyens de paiement, favoris, vendre ou livrer avec YA YO, centre d'aide, langue, déconnexion et suppression du compte. Moyens de paiement et Favoris n'ont pas encore d'écran : un message le dit.
+- **D7 · Profil** : adresses, moyens de paiement, mes enregistrements, favoris, vendre ou livrer avec YA YO, centre d'aide, langue, déconnexion et suppression du compte. Moyens de paiement et Favoris n'ont pas encore d'écran : un message le dit.
 - **D13–D15 · Adresses** : liste avec adresse par défaut, ajout et modification (nom, ville, commune, quartier et avenue, repère, téléphone sur place), suppression avec confirmation, 10 adresses au maximum. L'étape Livraison (C2) propose ces adresses, l'adresse par défaut en premier, et « Ajouter une adresse » ouvre D14. L'adresse choisie est copiée sur la commande.
 - **D18–D19 · Annuler une commande** : possible depuis le suivi tant que le vendeur n'a pas remis le colis au livreur ; motif obligatoire. Une commande payée est remboursée en entier sur son moyen de paiement ; à la livraison, rien n'est débité. Le vendeur est prévenu, la commande sort de sa file et la mission du livreur est retirée. Démo : la confirmation du remboursement par l'opérateur est simulée après 6 s.
 - **D16–D17 · Aide et support** : questions fréquentes, mes demandes (annulations, litiges, livraisons impossibles), discussion avec le support, éventuellement liée à une commande. Démo : la réponse du support est simulée. Le téléphone et l'e-mail du service client ne sont pas encore configurés : l'app le dit au lieu d'afficher des coordonnées inventées.
 - **D9–D12 · Supprimer mon compte** : ce qui est supprimé et gardé, motif facultatif, puis code envoyé au numéro du compte (mêmes règles que A6). La suppression est refusée (D10) tant qu'une commande, un litige, un remboursement, une commande de boutique, une mission ou du cash à reverser est en cours. Supprimés : profil, adresses, panier, favoris, discussion, boutique et dossier livreur. Les commandes passées restent sans le nom de l'acheteur.
 - Règles dans `src/domain/account.ts`, `src/domain/orderMachine.ts` et `src/domain/state.ts`, testées (`account.test.ts`).
+
+## Litige (US-07)
+
+- **D4 · Signaler un problème** pendant la livraison, avant le code de réception : motif, description, photos (appareil photo ou galerie), fonds bloqués. **D5 · Litige en cours** : avancement, informations ajoutées, décision. Démo : la décision de YA YO (rembourser ou payer le vendeur) se simule par deux boutons.
+
+## Fil social acheteur (SC3 à SC6)
+
+- **SC3** : l'Accueil propose « Pour toi », « Abonnements » (photos et vidéos des boutiques suivies, carrousel photo) et « Lives » (lives annoncés ou en cours).
+- **SC4 · Commentaires** : liste (épinglés d'abord), badge Vendeur, réponse, signalement d'un commentaire. Les numéros, liens et demandes de paiement hors YA YO sont masqués à l'envoi. Sans compte, A9 propose de se connecter.
+- **SC5 · Partager** : WhatsApp (si installé), Messenger et Autres via le partage du téléphone, copie du texte, republier, enregistrer, « Pas intéressé » (retire la publication du fil), signaler (envoyé à la modération et masqué). Il n'y a pas encore de lien web vers une publication : « Copier le lien » copie le texte et le dit.
+- **SC6 · Mes enregistrements** (Profil) : enregistrés, republiés, aimés, dossiers (appui long pour ranger). L'alerte « prix et stock à jour » du Figma n'est pas affichée : les notifications de baisse de prix ne sont pas encore faites.
+
+## Contenus vendeur (US-24 à US-32)
+
+- L'onglet **Contenus** remplace Boutique. **SV1** publications par statut (publiées, programmées, brouillons, masquées) avec vues et ventes sur 7 jours, **SV0** ajouter (vidéo, photos, story, live ; **SV0b** si la boutique n'est pas vérifiée, brouillon seulement), **SV7** actions (statistiques, modifier, remplacer un produit en rupture, dupliquer, dépublier, supprimer).
+- **SV2** publication vidéo ou photos (10 au maximum), légende contrôlée, jusqu'à 5 produits liés en ligne et en stock (**SV3**), commentaires, partage et bouton Commander ; **SV5** programmation entre 15 min et 30 jours ; **SV6b** quitter garde un brouillon.
+- **SV4** statistiques et commentaires à modérer, **SV8** tous les commentaires (répondre, épingler, masquer, bloquer l'auteur), **SV9–SV9b** contenu masqué par la modération, contestation ou correction, **SV10** guide qualité, **SV11** performance par période, **SV12–SV13** collections (affichées sur la page boutique), **SV14–SV15** story 24 h, **SV16** programmer un live, **SV17** salle de live, **SV18** fin du live.
+- Règles dans `src/domain/content.ts`, testées (`content.test.ts`).
+- Mode démo, sans serveur : les vidéos et photos restent sur le téléphone ; l'interruption d'envoi (SV6) ne peut pas arriver. La réponse de YA YO à une contestation se simule par deux boutons. Le live est une salle simulée : aucune vidéo n'est diffusée, il n'y a pas de spectateurs réels (0 affiché) et seules les vraies commandes passées dans l'app pendant le live sont comptées ; le replay sera proposé avec le serveur. Les chiffres des contenus de démonstration (vues, ventes) sont des valeurs de départ ; les vues, clics et partages faits dans l'app s'y ajoutent. Vues du profil et nouveaux abonnés ne sont pas affichés faute de données. Un produit créé dans l'espace vendeur peut être lié, mais n'apparaît pas encore sur la publication côté acheteur (il n'a pas de fiche acheteur).

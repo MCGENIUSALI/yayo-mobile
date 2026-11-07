@@ -3,6 +3,7 @@
  * parts the buyer sees (SC3–SC6: feed, comments, saves).
  * Pure rules: the reducer in state.ts applies them.
  */
+import { products as catalog } from './catalog';
 import { posts as staticPosts } from './feed';
 import type { Photo } from './seller';
 import type { FC, Post } from './types';
@@ -280,7 +281,8 @@ export function toPost(item: ContentItem, commentCount: number): Post {
     video: item.video,
     media: item.media,
     poster: item.poster,
-    productIds: item.productIds,
+    // Only products the buyer app can open (a product created in the seller demo has no buyer page yet).
+    productIds: item.productIds.filter((id) => !!catalog[id]),
     likes: item.stats.likes,
     comments: commentCount,
     saves: item.stats.saves,

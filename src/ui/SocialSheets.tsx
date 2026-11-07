@@ -107,7 +107,7 @@ export function CommentsSheet({ post, onClose, resumeHref }: { post: Post | null
     <Sheet
       visible={!!post}
       onClose={close}
-      title={`${count} ${plural(count, 'commentaire', 'commentaires')}`}
+      title={plural(count, 'commentaire', 'commentaires')}
       footer={
         <View style={styles.composerWrap}>
           <Text variant="caption" color={color.text.tertiary}>

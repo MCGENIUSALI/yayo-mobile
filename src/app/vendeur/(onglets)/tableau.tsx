@@ -40,6 +40,15 @@ export default function SellerDashboard() {
             {shop?.profile.name ?? 'Mon espace vendeur'}
           </Text>
         </View>
+        <PressableScale
+          accessibilityLabel="Ma boutique"
+          onPress={() => router.push('/vendeur/boutique')}
+          haptic="selection"
+          scaleTo={pressScale.icon}
+          style={styles.bell}
+        >
+          <Store size={24} color={color.icon.primary} strokeWidth={2} />
+        </PressableScale>
         {shop ? (
           <PressableScale
             accessibilityLabel={unread ? `Notifications, ${unread} non lues` : 'Notifications'}

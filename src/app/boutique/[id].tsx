@@ -1,10 +1,13 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { Check, Plus, Share2, ShieldCheck, Store, Truck } from 'lucide-react-native';
-import { useState } from 'react';
+import { Image } from 'expo-image';
+import { useMemo, useState } from 'react';
 import { ScrollView, Share, StyleSheet, View, useWindowDimensions } from 'react-native';
-import { shops } from '@/domain/catalog';
+import { products, shops } from '@/domain/catalog';
+import { statusAt } from '@/domain/content';
 import { filterShopTab, shopProducts, shopRating, shopTabs } from '@/domain/search';
 import type { Shop } from '@/domain/types';
+import { useStore } from '@/store/AppStore';
 import { pressScale } from '@/theme/motion';
 import { color, radius, space } from '@/theme/tokens';
 import { Button } from '@/ui/Button';
@@ -28,11 +31,24 @@ export default function ShopScreen() {
 function ShopPage({ shop }: { shop: Shop }) {
   const { width } = useWindowDimensions();
   const items = shopProducts(shop.id);
-  const tabs = shopTabs(items);
+  const { state } = useStore();
+  // Published collections of the shop (SV12), limited to products the buyer app can open.
+  const collections = useMemo(
+    () =>
+      Object.values(state.content.collections)
+        .filter((c) => c.shopId === shop.id && c.status === 'published')
+        .sort((a, b) => a.position - b.position)
+        .map((c) => ({ ...c, productIds: c.productIds.filter((pid) => !!products[pid]) }))
+        .filter((c) => c.productIds.length > 0),
+    [state.content.collections, shop.id],
+  );
+  const story = Object.values(state.content.items).find((i) => i.shopId === shop.id && i.kind === 'story' && statusAt(i, new Date().toISOString()) === 'published');
+  const tabs = [...shopTabs(items), ...collections.map((c) => ({ id: `col:${c.id}`, label: c.name, count: c.productIds.length }))];
   const [tab, setTab] = useState('all');
   const { following, toggle } = useFollow(shop.id);
   const rating = shopRating(shop);
-  const visible = filterShopTab(items, tab);
+  const collection = tab.startsWith('col:') ? collections.find((c) => `col:${c.id}` === tab) : undefined;
+  const visible = collection ? items.filter((p) => collection.productIds.includes(p.id)) : filterShopTab(items, tab);
 
   return (
     <Screen>
@@ -81,6 +97,24 @@ function ShopPage({ shop }: { shop: Shop }) {
             accessibilityHint={following ? `Ne plus suivre ${shop.name}` : 'Ses vidéos apparaîtront dans l’onglet Abonnements'}
           />
         </View>
+
+        {story ? (
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel={`Story de ${shop.name}${story.caption ? ` : ${story.caption}` : ''}`}
+            onPress={() => (story.productIds[0] && products[story.productIds[0]] ? router.push({ pathname: '/produit/[id]', params: { id: story.productIds[0] } }) : undefined)}
+            scaleTo={pressScale.card}
+            style={styles.story}
+          >
+            <View style={styles.storyRing}>{story.media[0] ? <Image source={story.media[0]} style={StyleSheet.absoluteFill} contentFit="cover" /> : null}</View>
+            <View style={styles.flex}>
+              <Text variant="labelL">Story · 24 h</Text>
+              <Text variant="bodyS" color={color.text.secondary} numberOfLines={2}>
+                {story.caption || 'Nouveauté de la boutique'}
+              </Text>
+            </View>
+          </PressableScale>
+        ) : null}
 
         <Text variant="bodyS" color={color.text.secondary} style={styles.note}>
           Une question ? Passe par le support YA YO : pas d’échange direct avec le vendeur.
@@ -147,6 +181,8 @@ function MissingShop() {
 }
 
 const styles = StyleSheet.create({
+  story: { flexDirection: 'row', alignItems: 'center', gap: space.md, backgroundColor: color.bg.surface, borderRadius: radius.lg, padding: space.md, marginHorizontal: space.screen, marginTop: space.md },
+  storyRing: { width: 56, height: 56, borderRadius: 28, overflow: 'hidden', borderWidth: 2, borderColor: color.bg.accent, backgroundColor: color.bg.surfaceSunken },
   flex: { flex: 1, minWidth: 0, gap: space.xs },
   content: { paddingBottom: space.screen },
   card: {

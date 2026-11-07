@@ -595,7 +595,7 @@ const styles = StyleSheet.create({
     marginTop: space.xs,
   },
   promoImage: { width: 130 },
-  sectionHead: { paddingHorizontal: space.screen, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  sectionHead: { paddingHorizontal: space.screen },
   link: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   post: { backgroundColor: color.bg.surface, paddingTop: space.md, paddingBottom: space.md, gap: space.sm },
   postHead: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.lg },
