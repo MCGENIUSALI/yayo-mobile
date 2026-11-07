@@ -28,7 +28,14 @@
       "expo-router",
       "expo-image",
       "expo-video",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "YA YO utilise tes photos pour les produits, les publications et les preuves de litige.",
+          "cameraPermission": "YA YO utilise l’appareil photo pour photographier tes produits et tes colis."
+        }
+      ]
     ],
     "scheme": "yayo",
     "experiments": {

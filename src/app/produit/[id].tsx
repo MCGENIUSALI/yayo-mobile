@@ -1,34 +1,41 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Heart, Share2, ShoppingCart } from 'lucide-react-native';
-import { useState } from 'react';
+import { ArrowLeft, Share2, ShoppingCart } from 'lucide-react-native';
+import { useEffect, useState } from 'react';
 import { ScrollView, Share, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getShop, products } from '@/domain/catalog';
 import { formatFC } from '@/domain/money';
 import { addToCartError } from '@/domain/state';
 import { useStore } from '@/store/AppStore';
+import { useRequireAccount } from '@/store/useRequireAccount';
 import { pressScale } from '@/theme/motion';
-import { color, radius, space } from '@/theme/tokens';
+import { color, space } from '@/theme/tokens';
 import { Button } from '@/ui/Button';
 import { EscrowBanner, PriceBlock, ProductImage, QuantityStepper, Rating, VendorHeader } from '@/ui/Commerce';
 import { Alert, useToast } from '@/ui/Feedback';
 import { PageIndicator } from '@/ui/Form';
 import { BottomBar, Screen } from '@/ui/Layout';
 import { haptic, PressableScale } from '@/ui/Pressable';
+import { WishlistButton } from '@/ui/Catalog';
 import { Badge } from '@/ui/Status';
 import { Text } from '@/ui/Text';
 import { IconButton } from '@/ui/TopAppBar';
 
 /** B4 · Fiche produit (+ E6 · Produit en rupture). */
 export default function ProductScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, added } = useLocalSearchParams<{ id: string; added?: string }>();
   const product = id ? products[id] : undefined;
   const insets = useSafeAreaInsets();
-  const { state, dispatch } = useStore();
+  const { state } = useStore();
   const toast = useToast();
+  const requireAccount = useRequireAccount();
+  // Back from A9 sign-in: the product was just added (A9 « tu reprends exactement où tu en étais »).
+  useEffect(() => {
+    if (added) toast('Ajouté au panier', 'success');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [colorName, setColorName] = useState(product?.colors[0]?.name ?? '');
   const [qty, setQty] = useState(1);
-  const [liked, setLiked] = useState(false);
 
   if (!product) {
     return (
@@ -45,17 +52,18 @@ export default function ProductScreen() {
   const out = product.stock <= 0;
   const discount = product.compareAt ? Math.round((1 - product.price / product.compareAt) * 100) : 0;
 
-  const add = (then?: () => void) => {
+  const add = (then: 'stay' | 'cart') => {
     const error = addToCartError(state, product.id, colorName, qty);
     if (error) {
       haptic('warning');
       toast(error, 'danger');
       return;
     }
-    dispatch({ type: 'cart/add', productId: product.id, color: colorName, qty });
+    const signedIn = !!state.auth.session;
+    requireAccount({ kind: 'addToCart', productId: product.id, color: colorName, qty, then });
+    if (!signedIn) return;
     haptic('success');
-    if (then) then();
-    else toast('Ajouté au panier', 'success');
+    if (then === 'stay') toast('Ajouté au panier', 'success');
   };
 
   return (
@@ -72,16 +80,7 @@ export default function ProductScreen() {
                   label="Partager"
                   onPress={() => Share.share({ message: `${product.name} · ${formatFC(product.price)} sur YA YO` }).catch(() => undefined)}
                 />
-                <PressableScale
-                  accessibilityLabel={liked ? 'Retirer des favoris' : 'Ajouter aux favoris'}
-                  accessibilityState={{ selected: liked }}
-                  onPress={() => setLiked((v) => !v)}
-                  haptic="light"
-                  scaleTo={pressScale.icon}
-                  style={styles.likeBtn}
-                >
-                  <Heart size={24} strokeWidth={2} color={liked ? color.icon.danger : color.icon.primary} fill={liked ? color.icon.danger : 'transparent'} />
-                </PressableScale>
+                <WishlistButton productId={product.id} name={product.shortName} size={44} tone="bar" />
               </View>
             </View>
             {discount > 0 ? (
@@ -96,7 +95,14 @@ export default function ProductScreen() {
         </View>
 
         <View style={styles.content}>
-          <VendorHeader shop={shop} showDelivery={false} />
+          <PressableScale
+            accessibilityRole="link"
+            accessibilityLabel={`Voir la boutique ${shop.name}`}
+            onPress={() => router.push({ pathname: '/boutique/[id]', params: { id: shop.id } })}
+            scaleTo={pressScale.card}
+          >
+            <VendorHeader shop={shop} showDelivery={false} />
+          </PressableScale>
           <Text variant="h3">{product.name}</Text>
           <Rating value={product.rating} count={product.reviews} />
           <View style={styles.priceRow}>
@@ -157,10 +163,10 @@ export default function ProductScreen() {
           <Button label="Produit indisponible" disabled fill style={{ flex: 1 }} />
         ) : (
           <>
-            <Button label="Au panier" variant="outline" leadingIcon={ShoppingCart} onPress={() => add()} haptic="none" />
+            <Button label="Au panier" variant="outline" leadingIcon={ShoppingCart} onPress={() => add('stay')} haptic="none" />
             <Button
               label="Acheter maintenant"
-              onPress={() => add(() => router.push('/panier'))}
+              onPress={() => add('cart')}
               haptic="none"
               style={{ flex: 1 }}
             />
@@ -183,14 +189,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   row: { flexDirection: 'row', gap: space.sm, alignItems: 'center' },
-  likeBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.md,
-    backgroundColor: color.bg.surfaceSunken,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   discount: { position: 'absolute', left: space.lg, bottom: 16 },
   pager: { position: 'absolute', bottom: 24, left: 0, right: 0, alignItems: 'center' },
   content: { paddingHorizontal: space.screen, paddingTop: space.xl, gap: space.lg },

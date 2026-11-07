@@ -34,7 +34,23 @@ export interface Shop {
   area: string;
   verified: boolean;
   deliveryLead: string;
+  /** Social handle shown on posts (without @). */
+  handle?: string;
+  /** Shop category shown on posts, e.g. "Électronique". */
+  category?: string;
+  /** Local require() of the shop's profile photo. */
+  avatar?: number;
+  /** Shop rating as shown on B5; computed from its products when absent. */
+  rating?: number;
+  reviews?: number;
+  /** One-line description on B5, e.g. "Électronique et audio". */
+  tagline?: string;
+  /** Cash on delivery accepted (B3 filter "Paiement à la livraison"). */
+  acceptsCash?: boolean;
 }
+
+/** Top-level universe a product belongs to (E3 · Catégories). */
+export type Department = 'electronique' | 'mode' | 'beaute' | 'maison';
 
 export interface ColorOption {
   name: string;
@@ -57,6 +73,9 @@ export interface Product {
   /** Local require() or remote URI. Optional until real catalogue photos are provided. */
   image?: number | string;
   description: string;
+  department: Department;
+  /** Product family, used for shop tabs (B5) and search, e.g. "Enceintes". */
+  family: string;
 }
 
 export interface CartLine {
@@ -67,9 +86,49 @@ export interface CartLine {
 
 export interface Address {
   id: string;
+  /** "Maison", "Bureau", "Chez maman" (D14 "Nom de l’adresse"). */
   label: string;
+  /** Line shown on C2, V6 and to the courier, built from the fields below. */
   line: string;
+  /** "+243 81 234 5678": who answers the courier on site. */
   phone: string;
+  city?: string;
+  commune?: string;
+  /** "Q. Matonge, 12 av. Kasa-Vubu" (D14 "Quartier, avenue et numéro"). */
+  street?: string;
+  /** "En face de la pharmacie" (D14 "Repère pour le livreur"). */
+  landmark?: string;
+}
+
+/** D18 · Pourquoi annules-tu ? */
+export type CancelReason = 'wrong_item' | 'too_slow' | 'cheaper' | 'other';
+
+/** D18–D19: cancelled by the buyer before the hand-over; prepaid money goes back to where it came from. */
+export interface OrderCancellation {
+  reason: CancelReason;
+  note?: string;
+  at: string;
+  /** none: nothing was paid (cash on delivery); sent: YA YO sent the refund; received: the operator confirmed it. */
+  refund: 'none' | 'sent' | 'received';
+  refundedAt?: string;
+}
+
+/** D4 · Quel est le problème ? */
+export type DisputeReason = 'not_received' | 'not_as_described' | 'missing_item' | 'other';
+
+/** D4–D5 · Litige (§7.5.6): funds stay blocked until YA YO decides. */
+export interface OrderDispute {
+  /** "LT-0318". */
+  id: string;
+  reason: DisputeReason;
+  description: string;
+  /** Photos of the parcel received (local URIs or demo images). */
+  photos: (number | string)[];
+  openedAt: string;
+  /** D5 "Ajouter une information". */
+  notes: { text: string; at: string }[];
+  /** Set by YA YO: the buyer is refunded, or the seller is paid. */
+  decision?: { outcome: 'refund' | 'pay_seller'; at: string };
 }
 
 export interface DeliverySlot {
@@ -86,6 +145,8 @@ export interface OrderLine {
 }
 
 export interface Courier {
+  /** Courier account in the app (absent for the simulated YA YO fleet). */
+  id?: string;
   name: string;
   initials: string;
   vehicle: string;
@@ -98,10 +159,14 @@ export interface OrderMilestones {
   paidAt?: string;
   preparedAt?: string;
   pickedUpAt?: string;
+  /** Courier mission (L4–L8): accepted, then "Je suis arrivé". */
+  acceptedAt?: string;
+  arrivedAt?: string;
   deliveredAt?: string;
   releasedAt?: string;
   failedAt?: string;
   disputedAt?: string;
+  cancelledAt?: string;
 }
 
 /**
@@ -125,9 +190,41 @@ export interface Order {
   addressId: string;
   slotId: string;
   courierNote?: string;
+  /** Buyer account that paid (filters "Mes commandes"); absent for orders from outside the demo. */
+  buyerId?: string;
+  /** What the seller sees on V5/V6: first name + initial and commune, never the phone (V6). */
+  buyer?: { name: string; commune: string };
   courier?: Courier;
+  /** Courier mission, created when the parcel is ready and a courier is dispatched (L4). */
+  mission?: Mission;
+  /** Drop-off address of a buyer outside the demo account (the demo buyer uses `addressId`). */
+  dropoff?: string;
+  /** L9 · Incident declared by the courier; YA YO decides what happens next. */
+  incident?: DeliveryIncident;
+  /** D18 · Cancelled by the buyer. */
+  cancellation?: OrderCancellation;
+  /** D4 · Litige ouvert par l'acheteur. */
+  dispute?: OrderDispute;
   cashCollected?: boolean;
   milestones: OrderMilestones;
+}
+
+export interface Mission {
+  /** "M-5521", shown to the courier instead of the order number. */
+  id: string;
+  distanceKm: number;
+  proposedAt: string;
+  /** Couriers who refused it: it is never proposed to them again. */
+  declinedBy: string[];
+}
+
+export type IncidentReason = 'absent' | 'refused' | 'address' | 'damaged';
+
+export interface DeliveryIncident {
+  reason: IncidentReason;
+  /** Proof of passage (photo of the place). */
+  photo: number | string;
+  at: string;
 }
 
 export type CheckoutStatus = 'awaiting_confirmation' | 'pending' | 'succeeded' | 'failed' | 'expired';
@@ -162,4 +259,29 @@ export interface DomainEvent {
   orderId?: string;
   checkoutId?: string;
   detail?: string;
+}
+
+/* ---------- Social commerce (SC1–SC3) ---------- */
+
+export type PostKind = 'video' | 'photo';
+
+export interface Post {
+  id: string;
+  kind: PostKind;
+  shopId: string;
+  caption: string;
+  /** Video: local require() of the clip, or a URI picked by the seller. Photo: unused. */
+  video?: number | string;
+  /** Images shown in the home feed card (carousel for photos, cover for videos). */
+  media: (number | string)[];
+  /** Video: first frame, shown while the clip loads. */
+  poster?: number | string;
+  /** Products tagged in the post, first one is featured. */
+  productIds: string[];
+  /** Counts before the current buyer's own like / save / repost. */
+  likes: number;
+  comments: number;
+  saves: number;
+  reposts: number;
+  createdAt: string;
 }

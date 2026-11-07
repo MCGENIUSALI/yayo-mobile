@@ -54,7 +54,14 @@ export function buildTimeline(order: Order, now = new Date()): TimelineStepModel
       title: 'En livraison',
       done: deliveredDone,
       doneText: m.deliveredAt ? `Arrivé à ${formatTime(m.deliveredAt)}` : '',
-      pendingText: eta(order) ? `Arrivée vers ${eta(order)!.from}` : 'Le livreur part après la collecte',
+      pendingText:
+        order.delivery === 'failed'
+          ? 'Livraison interrompue : YA YO te contacte'
+          : order.milestones.arrivedAt
+            ? `${order.courier?.name ?? 'Ton livreur'} est arrivé`
+            : eta(order)
+              ? `Arrivée vers ${eta(order)!.from}`
+              : 'Le livreur part après la collecte',
     },
     {
       key: 'delivered',
@@ -76,7 +83,7 @@ export function buildTimeline(order: Order, now = new Date()): TimelineStepModel
 
 /** Estimated arrival window, once the parcel is collected (pickup + 35–55 min in Kinshasa traffic). */
 export function eta(order: Order): { from: string; to: string } | null {
-  if (!order.milestones.pickedUpAt || order.delivery === 'delivered') return null;
+  if (!order.milestones.pickedUpAt || order.delivery === 'delivered' || order.delivery === 'failed') return null;
   const t = new Date(order.milestones.pickedUpAt).getTime();
   return { from: formatTime(new Date(t + 35 * 60_000).toISOString()), to: formatTime(new Date(t + 55 * 60_000).toISOString()) };
 }
@@ -91,6 +98,6 @@ export function etaLabel(order: Order): { caption: string; value: string } {
 
 /** The receipt code is shown only while it can still be used. */
 export function showReceiptCode(order: Order): boolean {
-  if (order.delivery === 'delivered' || order.payment === 'disputed' || order.payment === 'refunded') return false;
+  if (order.delivery === 'delivered' || order.delivery === 'failed' || order.payment === 'disputed' || order.payment === 'refunded') return false;
   return order.method === 'cash' ? order.payment === 'pending' || order.payment === 'in_delivery' : ['held_in_escrow', 'in_delivery'].includes(order.payment);
 }
