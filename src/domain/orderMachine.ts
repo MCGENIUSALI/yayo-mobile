@@ -1,6 +1,6 @@
 import { demoCourier } from './catalog';
 import { pickupCodeFor } from './seller';
-import type { CancelReason, Courier, IncidentReason, Mission, Order, PaymentStatus } from './types';
+import type { CancelReason, Courier, DisputeReason, IncidentReason, Mission, Order, PaymentStatus } from './types';
 
 /**
  * Authoritative order state machine (mock back-end).
@@ -27,7 +27,13 @@ export type OrderEvent =
   /** D18 · The buyer cancels before the parcel is handed to the courier. */
   | { type: 'buyer.cancel'; reason: CancelReason; note?: string }
   /** D19 · The operator confirms the refund reached the buyer's account. */
-  | { type: 'refund.received' };
+  | { type: 'refund.received' }
+  /** D4 · The buyer reports a problem with proof; funds stay blocked. */
+  | { type: 'buyer.dispute'; id: string; reason: DisputeReason; description: string; photos: (number | string)[] }
+  /** D5 · Ajouter une information. */
+  | { type: 'buyer.dispute_note'; text: string }
+  /** YA YO decides the dispute (back-office; simulated in the demo). */
+  | { type: 'dispute.decide'; outcome: 'refund' | 'pay_seller' };
 
 export type OrderEventType = OrderEvent['type'];
 
@@ -37,7 +43,8 @@ export type DomainErrorCode =
   | 'WRONG_RECEIPT_CODE'
   | 'WRONG_PICKUP_CODE'
   | 'CASH_NOT_COLLECTED'
-  | 'PROOF_REQUIRED';
+  | 'PROOF_REQUIRED'
+  | 'DISPUTED';
 
 export class DomainError extends Error {
   constructor(
@@ -71,6 +78,18 @@ export function canCancel(order: Order): boolean {
   return paid && order.seller !== 'handed_over' && ['unassigned', 'assigned', 'picking_up'].includes(order.delivery);
 }
 
+/**
+ * D4 rule: a problem is reported before the receipt code is given (the code
+ * releases the seller's payment), i.e. while the parcel is with the courier,
+ * or after a failed delivery. Before the hand-over the buyer cancels instead (D18).
+ */
+export function canDispute(order: Order): boolean {
+  if (order.cancellation || order.dispute) return false;
+  return order.payment === 'in_delivery' || order.delivery === 'failed';
+}
+
+export const MAX_DISPUTE_PHOTOS = 4;
+
 export function applyOrderEvent(order: Order, event: OrderEvent, at: string): Transition {
   // A cancelled order is frozen: only the refund confirmation still applies.
   if (order.cancellation && event.type !== 'refund.received') return fail('INVALID_TRANSITION', 'Cette commande a été annulée par l’acheteur.');
@@ -97,6 +116,37 @@ export function applyOrderEvent(order: Order, event: OrderEvent, at: string): Tr
       const c = order.cancellation;
       if (!c || c.refund !== 'sent') return fail('INVALID_TRANSITION', 'Aucun remboursement en cours.');
       return { ok: true, order: { ...order, cancellation: { ...c, refund: 'received', refundedAt: at } } };
+    }
+    case 'buyer.dispute': {
+      if (!canDispute(order)) return fail('INVALID_TRANSITION', 'Un problème se signale pendant la livraison, avant de donner ton code de réception.');
+      const description = event.description.trim();
+      if (description.length < 10) return fail('PROOF_REQUIRED', 'Décris le problème en quelques mots (10 caractères au moins).');
+      if (event.reason !== 'not_received' && event.photos.length === 0) return fail('PROOF_REQUIRED', 'Ajoute au moins une photo du produit reçu.');
+      if (event.photos.length > MAX_DISPUTE_PHOTOS) return fail('PROOF_REQUIRED', `${MAX_DISPUTE_PHOTOS} photos au maximum.`);
+      return {
+        ok: true,
+        order: {
+          ...order,
+          payment: 'disputed',
+          dispute: { id: event.id, reason: event.reason, description, photos: event.photos, openedAt: at, notes: [] },
+          milestones: { ...order.milestones, disputedAt: at },
+        },
+      };
+    }
+    case 'buyer.dispute_note': {
+      if (!order.dispute || order.dispute.decision) return fail('INVALID_TRANSITION', 'Aucun litige en cours.');
+      const text = event.text.trim();
+      if (!text) return fail('PROOF_REQUIRED', 'Écris ton information.');
+      return { ok: true, order: { ...order, dispute: { ...order.dispute, notes: [...order.dispute.notes, { text: text.slice(0, 500), at }] } } };
+    }
+    case 'dispute.decide': {
+      if (!order.dispute || order.dispute.decision) return fail('INVALID_TRANSITION', 'Aucun litige en cours.');
+      const dispute = { ...order.dispute, decision: { outcome: event.outcome, at } };
+      if (event.outcome === 'refund') return { ok: true, order: { ...order, dispute, payment: 'refunded' } };
+      return {
+        ok: true,
+        order: { ...order, dispute, payment: 'released', delivery: 'delivered', milestones: { ...order.milestones, deliveredAt: order.milestones.deliveredAt ?? at, releasedAt: at } },
+      };
     }
     case 'seller.start_preparing': {
       if (order.seller !== 'new') return fail('INVALID_TRANSITION', 'La commande est déjà en préparation.');
@@ -161,6 +211,7 @@ export function applyOrderEvent(order: Order, event: OrderEvent, at: string): Tr
       };
     }
     case 'courier.confirm_delivery': {
+      if (order.payment === 'disputed') return fail('DISPUTED', 'Le client a signalé un problème : garde le colis, YA YO te contacte pour la suite.');
       if (order.delivery !== 'delivering' || order.payment !== 'in_delivery')
         return fail('INVALID_TRANSITION', 'Le colis n’est pas en cours de livraison.');
       if (event.code !== order.receiptCode) return fail('WRONG_RECEIPT_CODE', 'Code de réception incorrect.');

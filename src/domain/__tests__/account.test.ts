@@ -1,7 +1,8 @@
 import { describe, expect, it } from '@jest/globals';
 import { addressError, addressLine } from '../account';
 import { authGate, DEMO_PHONE_EXISTING, DEMO_PHONE_SELLER } from '../auth';
-import { canCancel } from '../orderMachine';
+import { canCancel, canDispute } from '../orderMachine';
+import { pickupCodeFor } from '../seller';
 import {
   buyerAddresses,
   confirmedOrders,
@@ -140,6 +141,60 @@ describe('cancel an order (D18–D19)', () => {
 
     const other = signIn(run(s, { type: 'auth/signOut' } as Action), DEMO_PHONE_SELLER, 100);
     expect(reducer(other, { type: 'order/cancel', orderId: id, reason: 'other', at: at(130) }).lastError?.code).toBe('NOT_FOUND');
+  });
+});
+
+describe('report a problem (D4–D5)', () => {
+  /** Jean's first order, out for delivery (the courier has the parcel). */
+  function delivering() {
+    const { s, ids } = paid();
+    const id = ids[0]!;
+    const ev = (event: Extract<Action, { type: 'order/event' }>['event']) => ({ type: 'order/event', orderId: id, event, actor: 'courier', at: at(20) }) as Action;
+    const t = run(s, ev({ type: 'seller.start_preparing' }), ev({ type: 'seller.mark_ready' }), ev({ type: 'courier.accept' }), ev({ type: 'courier.collect', code: pickupCodeFor(id) }));
+    return { s: t, id };
+  }
+  const report = (orderId: string, extra: Partial<Extract<Action, { type: 'order/dispute' }>> = {}): Action => ({
+    type: 'order/dispute',
+    orderId,
+    reason: 'not_as_described',
+    description: 'Reçu en bleu, j’avais commandé la jaune.',
+    photos: [1],
+    at: at(40),
+    ...extra,
+  });
+
+  it('is only possible once the parcel is with the courier', () => {
+    const { s, ids } = paid();
+    expect(canDispute(s.orders[ids[0]!]!)).toBe(false);
+    expect(reducer(s, report(ids[0]!)).lastError?.code).toBe('INVALID_TRANSITION');
+    expect(canDispute(delivering().s.orders[delivering().id]!)).toBe(true);
+  });
+
+  it('needs a description and a photo, except for a parcel not received', () => {
+    const { s, id } = delivering();
+    expect(reducer(s, report(id, { description: 'abîmé' })).lastError?.code).toBe('PROOF_REQUIRED');
+    expect(reducer(s, report(id, { photos: [] })).lastError?.code).toBe('PROOF_REQUIRED');
+    expect(reducer(s, report(id, { reason: 'not_received', photos: [] })).lastError).toBeUndefined();
+  });
+
+  it('blocks the funds and the delivery confirmation until YA YO decides', () => {
+    const { s, id } = delivering();
+    let d = reducer(s, report(id));
+    const o = d.orders[id]!;
+    expect(o.payment).toBe('disputed');
+    expect(o.dispute).toMatchObject({ id: expect.stringMatching(/^LT-\d{4}$/), reason: 'not_as_described', notes: [] });
+    expect(orderTab(o)).toBe('disputes');
+    const confirm = { type: 'order/event', orderId: id, event: { type: 'courier.confirm_delivery', code: o.receiptCode }, actor: 'courier', at: at(41) } as Action;
+    expect(reducer(d, confirm).lastError?.code).toBe('DISPUTED');
+    d = reducer(d, { type: 'order/disputeNote', orderId: id, text: 'Le livreur est reparti avec le colis.', at: at(42) });
+    expect(d.orders[id]!.dispute!.notes).toHaveLength(1);
+    expect(deletionBlockers(d)).toContainEqual({ kind: 'dispute', orderId: id });
+
+    const refunded = reducer(d, { type: 'order/disputeDecide', orderId: id, outcome: 'refund', at: at(50) });
+    expect(refunded.orders[id]!.payment).toBe('refunded');
+    const paidSeller = reducer(d, { type: 'order/disputeDecide', orderId: id, outcome: 'pay_seller', at: at(50) });
+    expect(paidSeller.orders[id]).toMatchObject({ payment: 'released', delivery: 'delivered' });
+    expect(reducer(refunded, { type: 'order/disputeNote', orderId: id, text: 'encore', at: at(51) }).lastError?.code).toBe('INVALID_TRANSITION');
   });
 });
 

@@ -4,7 +4,7 @@
  * Pure rules shared by the reducer and the screens.
  */
 import { CITIES, formatPhone, normalizePhone } from './auth';
-import type { Address, CancelReason } from './types';
+import type { Address, CancelReason, DisputeReason } from './types';
 
 /* ---------- Adresses (D13–D15) ---------- */
 
@@ -67,6 +67,17 @@ export const CANCEL_REASONS: { id: CancelReason; label: string }[] = [
 ];
 
 export const cancelReasonLabel = (r: CancelReason) => CANCEL_REASONS.find((x) => x.id === r)?.label ?? 'Autre raison';
+
+/* ---------- Litige (D4–D5) ---------- */
+
+/** D4 · Quel est le problème ? */
+export const DISPUTE_REASONS: { id: DisputeReason; label: string; short: string }[] = [
+  { id: 'not_received', label: 'Colis non reçu', short: 'Colis non reçu' },
+  { id: 'not_as_described', label: 'Produit non conforme ou abîmé', short: 'Produit non conforme' },
+  { id: 'missing_item', label: 'Article manquant', short: 'Article manquant' },
+  { id: 'other', label: 'Autre problème', short: 'Autre problème' },
+];
+
 
 /* ---------- Support (D16–D17) ---------- */
 

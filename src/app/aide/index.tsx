@@ -76,7 +76,7 @@ export default function HelpCenter() {
               <PressableScale
                 key={o.id}
                 accessibilityRole="link"
-                onPress={() => router.push({ pathname: '/suivi/[id]', params: { id: o.id } })}
+                onPress={() => (o.dispute ? router.push({ pathname: '/suivi/litige/[id]', params: { id: o.id } }) : router.push({ pathname: '/suivi/[id]', params: { id: o.id } }))}
                 scaleTo={pressScale.card}
                 style={styles.request}
               >
@@ -109,11 +109,12 @@ export default function HelpCenter() {
 
 /** An order that needed (or needs) YA YO: cancelled, disputed or failed delivery. */
 function isRequest(o: Order): boolean {
-  return !!o.cancellation || o.payment === 'disputed' || o.delivery === 'failed';
+  return !!o.cancellation || !!o.dispute || o.payment === 'disputed' || o.delivery === 'failed';
 }
 
 function requestTitle(o: Order): string {
   if (o.cancellation) return o.cancellation.refund === 'none' ? 'Commande annulée' : 'Remboursement après annulation';
+  if (o.dispute) return `Litige #${o.dispute.id}`;
   if (o.delivery === 'failed') return 'Livraison impossible';
   return 'Litige';
 }
@@ -123,6 +124,7 @@ function requestBadge(o: Order): { label: string; tone: 'neutral' | 'success' | 
     if (o.cancellation.refund === 'sent') return { label: 'En cours', tone: 'warning' };
     return { label: 'Terminé', tone: 'success' };
   }
+  if (o.dispute?.decision) return { label: 'Terminé', tone: 'success' };
   return { label: 'En cours', tone: 'warning' };
 }
 

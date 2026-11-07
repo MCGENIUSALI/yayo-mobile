@@ -132,6 +132,9 @@ export default function SellerOrderDetail() {
             {order.payment === 'released' ? 'Versé sur ton solde.' : 'Versé après confirmation de la livraison.'}
           </Text>
         </Card>
+        {order.dispute && !order.dispute.decision ? (
+          <Alert tone="danger" title="Litige en cours" body="L’acheteur a signalé un problème. Les fonds restent bloqués jusqu’à la décision de YA YO, sous 72 h. YA YO te contacte." />
+        ) : null}
         {order.cancellation ? (
           <Alert tone="warning" title="Commande annulée par l’acheteur" body="Ne prépare pas ce colis. Tu ne reçois rien pour cette commande et l’acheteur est remboursé par YA YO." />
         ) : null}

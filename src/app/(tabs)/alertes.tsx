@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { Ban, Bell, CircleX, PackageCheck, ShieldCheck, Store, Truck, Undo2, type LucideIcon } from 'lucide-react-native';
+import { Ban, Bell, CircleX, PackageCheck, Scale, ShieldCheck, Store, TriangleAlert, Truck, Undo2, type LucideIcon } from 'lucide-react-native';
 import { useMemo } from 'react';
 import { FlatList, StyleSheet, View } from 'react-native';
 import { formatDayTime } from '@/domain/format';
@@ -50,6 +50,20 @@ function notices(state: AppState): Notice[] {
           body: order?.method === 'cash' ? 'Rien n’a été payé : aucun remboursement n’est nécessaire.' : 'YA YO a lancé ton remboursement.',
           icon: Ban,
           tint: color.icon.secondary,
+          orderId: e.orderId,
+        });
+        break;
+      case 'buyer.dispute':
+        out.push({ id: e.id, at: e.at, title: `Litige ouvert sur ${ref}`, body: 'Les fonds restent bloqués. Décision de YA YO sous 72 h.', icon: TriangleAlert, tint: color.icon.danger, orderId: e.orderId });
+        break;
+      case 'dispute.decide':
+        out.push({
+          id: e.id,
+          at: e.at,
+          title: `Litige de ${ref} tranché`,
+          body: order?.dispute?.decision?.outcome === 'refund' ? 'Tu es remboursé.' : 'YA YO a payé le vendeur.',
+          icon: Scale,
+          tint: color.icon.info,
           orderId: e.orderId,
         });
         break;

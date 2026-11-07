@@ -20,6 +20,9 @@ const LABELS: Record<OrderEventType, { actor: 'seller' | 'courier'; label: strin
   'escrow.release': undefined,
   'buyer.cancel': undefined,
   'refund.received': undefined,
+  'buyer.dispute': undefined,
+  'buyer.dispute_note': undefined,
+  'dispute.decide': undefined,
 };
 
 /**

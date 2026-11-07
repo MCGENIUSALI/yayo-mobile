@@ -33,6 +33,7 @@ import { summarizeCart, splitDiscount } from './pricing';
 import type {
   Address,
   CancelReason,
+  DisputeReason,
   CartLine,
   Checkout,
   Courier,
@@ -149,6 +150,12 @@ export type Action =
   | { type: 'order/cancel'; orderId: string; reason: CancelReason; note?: string; at: string }
   /** D19: the operator confirms the refund (simulated payment provider). */
   | { type: 'order/refundReceived'; orderId: string; at: string }
+  /** D4 · Signaler un problème. */
+  | { type: 'order/dispute'; orderId: string; reason: DisputeReason; description: string; photos: (number | string)[]; at: string }
+  /** D5 · Ajouter une information. */
+  | { type: 'order/disputeNote'; orderId: string; text: string; at: string }
+  /** Demo only: plays the YA YO team deciding the dispute. */
+  | { type: 'order/disputeDecide'; orderId: string; outcome: 'refund' | 'pay_seller'; at: string }
   /** D17: opening the chat greets the buyer once. */
   | { type: 'support/open'; at: string }
   | { type: 'support/send'; text: string; orderId?: string; at: string }
@@ -542,6 +549,21 @@ export function reducer(state: AppState, action: Action): AppState {
       });
     }
 
+    case 'order/dispute':
+    case 'order/disputeNote': {
+      const order = state.orders[action.orderId];
+      const me = state.auth.session?.accountId;
+      if (!me || !order || order.buyerId !== me) return reject(state, 'NOT_FOUND', 'Commande introuvable.', action.at);
+      const event: OrderEvent =
+        action.type === 'order/dispute'
+          ? { type: 'buyer.dispute', id: disputeIdFor(order.id), reason: action.reason, description: action.description, photos: action.photos }
+          : { type: 'buyer.dispute_note', text: action.text };
+      return reducer(state, { type: 'order/event', orderId: order.id, event, actor: 'buyer', at: action.at });
+    }
+
+    case 'order/disputeDecide':
+      return reducer(state, { type: 'order/event', orderId: action.orderId, event: { type: 'dispute.decide', outcome: action.outcome }, actor: 'system', at: action.at });
+
     case 'order/refundReceived':
       return reducer(state, { type: 'order/event', orderId: action.orderId, event: { type: 'refund.received' }, actor: 'payment_provider', at: action.at });
 
@@ -917,6 +939,11 @@ function reduceCourier(state: AppState, action: CourierAction): AppState {
     next = { ...next, lastError: undefined };
   }
   return next;
+}
+
+/** "YY-24880" → "LT-4880" (D5 "Litige #LT-0318"). */
+export function disputeIdFor(orderId: string): string {
+  return `LT-${orderId.replace(/\D/g, '').slice(-4).padStart(4, '0')}`;
 }
 
 /* ---------- US-09 · Compte ---------- */

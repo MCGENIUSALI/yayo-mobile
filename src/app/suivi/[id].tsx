@@ -7,7 +7,7 @@ import { getShop } from '@/domain/catalog';
 import { cancelReasonLabel } from '@/domain/account';
 import { formatDayTime } from '@/domain/format';
 import { formatFC } from '@/domain/money';
-import { canCancel } from '@/domain/orderMachine';
+import { canCancel, canDispute } from '@/domain/orderMachine';
 import type { Order } from '@/domain/types';
 import { incidentLabel } from '@/domain/courier';
 import { buildTimeline, etaLabel, showReceiptCode, type StepKey } from '@/domain/tracking';
@@ -173,15 +173,27 @@ export default function TrackingScreen() {
             />
           ) : null}
 
-          {!delivered ? (
+          {order.dispute ? (
+            <Button
+              label={`Voir le litige #${order.dispute.id}`}
+              variant="outline"
+              leadingIcon={TriangleAlert}
+              onPress={() => router.push({ pathname: '/suivi/litige/[id]', params: { id: order.id } })}
+              fill
+            />
+          ) : canDispute(order) ? (
             <Button
               label="Signaler un problème"
               variant="ghost"
               size="M"
               leadingIcon={TriangleAlert}
               style={styles.report}
-              onPress={() => toast('Le signalement de litige (D4) arrive dans la prochaine version.')}
+              onPress={() => router.push({ pathname: '/suivi/litige/[id]', params: { id: order.id } })}
             />
+          ) : !delivered && !canCancel(order) ? (
+            <Text variant="bodyS" color={color.text.secondary}>
+              Un souci ? Tu pourras signaler un problème quand le livreur sera en route, avant de donner ton code.
+            </Text>
           ) : null}
 
           <DemoConsole order={order} />

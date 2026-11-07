@@ -113,6 +113,24 @@ export interface OrderCancellation {
   refundedAt?: string;
 }
 
+/** D4 · Quel est le problème ? */
+export type DisputeReason = 'not_received' | 'not_as_described' | 'missing_item' | 'other';
+
+/** D4–D5 · Litige (§7.5.6): funds stay blocked until YA YO decides. */
+export interface OrderDispute {
+  /** "LT-0318". */
+  id: string;
+  reason: DisputeReason;
+  description: string;
+  /** Photos of the parcel received (local URIs or demo images). */
+  photos: (number | string)[];
+  openedAt: string;
+  /** D5 "Ajouter une information". */
+  notes: { text: string; at: string }[];
+  /** Set by YA YO: the buyer is refunded, or the seller is paid. */
+  decision?: { outcome: 'refund' | 'pay_seller'; at: string };
+}
+
 export interface DeliverySlot {
   id: string;
   label: string;
@@ -185,6 +203,8 @@ export interface Order {
   incident?: DeliveryIncident;
   /** D18 · Cancelled by the buyer. */
   cancellation?: OrderCancellation;
+  /** D4 · Litige ouvert par l'acheteur. */
+  dispute?: OrderDispute;
   cashCollected?: boolean;
   milestones: OrderMilestones;
 }

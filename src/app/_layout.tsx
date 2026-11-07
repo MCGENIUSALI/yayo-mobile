@@ -116,6 +116,7 @@ function RootStack() {
         <Stack.Screen name="achat/echec" options={{ gestureEnabled: false, animation: 'fade_from_bottom' }} />
         <Stack.Screen name="suivi/[id]" />
         <Stack.Screen name="suivi/annuler/[id]" />
+        <Stack.Screen name="suivi/litige/[id]" />
         <Stack.Screen name="compte/adresses" />
         <Stack.Screen name="compte/adresse" />
         <Stack.Screen name="compte/supprimer" />

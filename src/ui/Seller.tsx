@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { Camera, ChevronRight, ShieldCheck, Sparkles, TrendingDown, TrendingUp, X, type LucideIcon } from 'lucide-react-native';
+import { Camera, ChevronRight, Image as ImageIcon, ShieldCheck, Sparkles, TrendingDown, TrendingUp, X, type LucideIcon } from 'lucide-react-native';
 import { useState, type ReactNode } from 'react';
 import { StyleSheet, Switch, View } from 'react-native';
 import Animated from 'react-native-reanimated';
@@ -13,6 +13,7 @@ import { color, radius, space } from '@/theme/tokens';
 import { Button } from './Button';
 import { useEnter } from './Feedback';
 import { PageIndicator } from './Form';
+import { PICK_ERROR, pickPhoto } from './pickPhoto';
 import { haptic, PressableScale } from './Pressable';
 import { Sheet } from './Sheet';
 import { Badge } from './Status';
@@ -225,6 +226,15 @@ const DEMO_GALLERY: Photo[] = Object.values(products)
 
 export function AddPhotoTile({ label = 'Ajouter', size = 96, onPick, title }: { label?: string; size?: number; onPick: (p: Photo) => void; title: string }) {
   const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const pick = async (source: 'camera' | 'library') => {
+    const r = await pickPhoto(source);
+    if (r.ok) {
+      onPick(r.uri);
+      setOpen(false);
+      setError(null);
+    } else setError(PICK_ERROR[r.reason]);
+  };
   return (
     <>
       <PressableScale
@@ -241,8 +251,17 @@ export function AddPhotoTile({ label = 'Ajouter', size = 96, onPick, title }: { 
         </Text>
       </PressableScale>
       <Sheet visible={open} onClose={() => setOpen(false)} title={title}>
+        <View style={{ flexDirection: 'row', gap: space.md }}>
+          <Button label="Appareil photo" variant="outline" size="M" leadingIcon={Camera} onPress={() => pick('camera')} style={{ flex: 1 }} />
+          <Button label="Galerie" variant="outline" size="M" leadingIcon={ImageIcon} onPress={() => pick('library')} style={{ flex: 1 }} />
+        </View>
+        {error ? (
+          <Text variant="bodyS" color={color.text.danger}>
+            {error}
+          </Text>
+        ) : null}
         <Text variant="bodyS" color={color.text.secondary}>
-          Démo : choisis une image. Dans l’app publiée, ce bouton ouvre l’appareil photo ou la galerie.
+          Ou choisis une image de démo :
         </Text>
         <View style={styles.gallery}>
           {DEMO_GALLERY.map((src, i) => (

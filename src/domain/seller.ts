@@ -318,6 +318,20 @@ export function sellerNotices(orders: Order[], products: SellerProduct[], now: s
       orderId: o.id,
     });
   }
+  for (const o of orders.filter((x) => x.dispute)) {
+    out.push({
+      id: `dispute-${o.id}`,
+      kind: 'order',
+      at: o.dispute!.openedAt,
+      title: `Litige sur #${o.id}`,
+      body: o.dispute!.decision
+        ? o.dispute!.decision.outcome === 'refund'
+          ? 'YA YO a remboursé l’acheteur.'
+          : 'YA YO a tranché en ta faveur : le paiement est libéré.'
+        : 'L’acheteur a signalé un problème. Les fonds restent bloqués ; YA YO te contacte.',
+      orderId: o.id,
+    });
+  }
   for (const o of orders.filter(orderSecured)) {
     const items = o.lines.map((l) => `${l.qty}× ${l.name.split(' – ')[0]}`).join(', ');
     out.push({
