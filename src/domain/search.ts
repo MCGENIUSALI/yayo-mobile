@@ -72,9 +72,10 @@ export interface SearchFilters {
   minRating: MinRating;
   verifiedOnly: boolean;
   fastDelivery: boolean;
+  cashOnDelivery: boolean;
 }
 
-export const noFilters: SearchFilters = { minRating: 0, verifiedOnly: false, fastDelivery: false };
+export const noFilters: SearchFilters = { minRating: 0, verifiedOnly: false, fastDelivery: false, cashOnDelivery: false };
 
 /** Filters set in the sheet, the category chip excluded (it has its own row on B2). */
 export function sheetFilterCount(f: SearchFilters): number {
@@ -82,7 +83,8 @@ export function sheetFilterCount(f: SearchFilters): number {
     (f.minPrice != null || f.maxPrice != null ? 1 : 0) +
     (f.minRating > 0 ? 1 : 0) +
     (f.verifiedOnly ? 1 : 0) +
-    (f.fastDelivery ? 1 : 0)
+    (f.fastDelivery ? 1 : 0) +
+    (f.cashOnDelivery ? 1 : 0)
   );
 }
 
@@ -107,6 +109,7 @@ function passes(p: Product, f: SearchFilters): boolean {
   if (p.rating < f.minRating) return false;
   if (f.verifiedOnly && !shop.verified) return false;
   if (f.fastDelivery && !deliversIn24h(shop)) return false;
+  if (f.cashOnDelivery && shop.acceptsCash === false) return false;
   return true;
 }
 

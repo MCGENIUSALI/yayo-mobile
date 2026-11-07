@@ -93,21 +93,19 @@ function order(o: {
 /** L4 proposed mission, L13 mission in progress, L10 cash to pay back, L11 history (one failure). */
 export function seedCourierOrders(now: string): { orders: Record<string, Order>; checkouts: Checkout[] } {
   const list: Order[] = [
-    // L4 · Nouvelle mission: JBL Store Kin → Kalamu (Figma: 290 000 FC). Paid online: no cash to collect
-    // since cash on delivery was removed (2026-11-07).
+    // L4 · Nouvelle mission: JBL Store Kin → Kalamu, cash on delivery (Figma: 290 000 FC).
     order({
       seq: 24860,
       shopId: 'jbl-store-kin',
       lines: [line('jbl-go-3', 'Noir', 3)],
-      method: 'mobile_money',
+      method: 'cash',
       buyer: { name: 'Christelle B.', commune: 'Kalamu' },
       dropoff: '8, av. Lukandu, Q. Matonge, Kalamu',
       note: 'Portail bleu, face à la pharmacie',
-      status: { payment: 'held_in_escrow', seller: 'ready', delivery: 'assigned' },
+      status: { payment: 'pending', seller: 'ready', delivery: 'assigned' },
       mission: { id: 'M-5521', km: 11, proposedAt: ago(now, 2) },
-      milestones: { createdAt: ago(now, 95), paidAt: ago(now, 94), preparedAt: ago(now, 3) },
+      milestones: { createdAt: ago(now, 95), preparedAt: ago(now, 3) },
     }),
-    // L10 · Cash collected this morning on orders placed before cash on delivery was removed: still to pay back.
     // L13 · En cours: accepted, on the way to Tech Lingwala.
     order({
       seq: 24862,
@@ -120,6 +118,7 @@ export function seedCourierOrders(now: string): { orders: Record<string, Order>;
       mission: { id: 'M-5530', km: 6, proposedAt: ago(now, 42) },
       milestones: { createdAt: ago(now, 130), paidAt: ago(now, 129), preparedAt: ago(now, 45), acceptedAt: ago(now, 40) },
     }),
+    // L10 · Cash collected today, still to pay back.
     order({
       seq: 24857,
       shopId: 'bilokos2kin',

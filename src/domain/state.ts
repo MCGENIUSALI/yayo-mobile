@@ -10,8 +10,7 @@ import {
   type AuthAction,
   type AuthState,
 } from './auth';
-import { addresses as demoAddresses, getProduct } from './catalog';
-import { addressLine, BUNDLED_GEO, completePlace, placeError, type Place } from './geo';
+import { getProduct } from './catalog';
 import {
   cashDue,
   courierCard,
@@ -31,7 +30,6 @@ import { pickupCodeFor, revenue, sellerReduce, type SellerAction, type SellerSpa
 import { seedSellerOrders, seedSellerSpace, SELLER_CHECKOUT_ID } from './sellerSeed';
 import { summarizeCart, splitDiscount } from './pricing';
 import type {
-  Address,
   CartLine,
   Checkout,
   Courier,
@@ -41,16 +39,7 @@ import type {
   PaymentMethod,
 } from './types';
 
-export const STATE_VERSION = 7;
-
-/**
- * Payment methods a buyer can choose at checkout. Cash on delivery was removed
- * (Rich-man, 2026-11-07): every order is paid when it is placed and held by
- * YA YO until the buyer confirms receipt. `cash` stays in `PaymentMethod` only
- * so that orders placed before that change keep their history.
- */
-export const CHECKOUT_METHODS: readonly PaymentMethod[] = ['mobile_money', 'card'];
-export const isCheckoutMethod = (m: PaymentMethod): boolean => CHECKOUT_METHODS.includes(m);
+export const STATE_VERSION = 6;
 
 /** Mobile Money request lifetime shown on C4 ("La demande expire dans 01:45"). */
 export const MOMO_REQUEST_TTL_MS = 105_000;
@@ -102,8 +91,6 @@ export interface AppState {
   seller: Record<string, SellerSpace>;
   /** US-15 à US-19: one courier space per account (vehicle, KYC, availability, cash paid back). */
   courier: Record<string, CourierSpace>;
-  /** Buyer delivery addresses, per account (v7). */
-  addressBook: Record<string, Address[]>;
   /** Which app the signed-in account is using (V12 "Passer en mode acheteur"). */
   mode: AppMode;
   /** Last rejected action, for UI feedback. Never persisted as business state. */
@@ -135,8 +122,6 @@ export type Action =
   /** L4 "Refuser": the mission goes to another courier. */
   | { type: 'courier/decline'; orderId: string; at: string }
   | { type: 'app/setMode'; mode: AppMode; at: string }
-  /** C2 "Ajouter une adresse": saved to the account and selected for this order. */
-  | { type: 'address/add'; label: string; place: Partial<Place>; at: string }
   | { type: 'checkout/pay'; at: string }
   | {
       type: 'checkout/providerResult';
@@ -232,8 +217,6 @@ export function createInitialState(now: string): AppState {
     auth: createAuthState(),
     seller: { [DEMO_SELLER_ID]: seedSellerSpace(now) },
     courier: { [DEMO_COURIER_ID]: seedCourierSpace(now) },
-    // Jean's addresses (Figma C2 "Maison", "Bureau").
-    addressBook: { 'U-1': demoAddresses },
     mode: 'buyer',
   };
 }
@@ -246,10 +229,9 @@ export function restoreState(saved: unknown, now: string): AppState {
   const s = saved as Partial<AppState> | null;
   if (!s || typeof s !== 'object' || typeof s.version !== 'number') return createInitialState(now);
   if (s.version === STATE_VERSION) return { ...(s as AppState), lastError: undefined };
-  if (s.version === 6 && s.auth && s.courier) return toV7(s as AppState);
-  if (s.version === 5 && s.auth && s.seller) return toV7(toV6(s as AppState, now));
+  if (s.version === 5 && s.auth && s.seller) return toV6(s as AppState, now);
   if ((s.version === 2 || s.version === 3) && s.social) {
-    return toV7(toV6(toV5(
+    return toV6(toV5(
       {
         ...(s as AppState),
         social: { ...s.social, wishlist: s.social.wishlist ?? [] },
@@ -258,9 +240,9 @@ export function restoreState(saved: unknown, now: string): AppState {
         auth: createAuthState(),
       },
       now,
-    ), now));
+    ), now);
   }
-  if (s.version === 4 && s.auth) return toV7(toV6(toV5(s as AppState, now), now));
+  if (s.version === 4 && s.auth) return toV6(toV5(s as AppState, now), now);
   return createInitialState(now);
 }
 
@@ -302,32 +284,6 @@ function toV6(s: AppState, now: string): AppState {
     orderSeq: Math.max(s.orderSeq, 24880),
     auth,
     courier: s.courier ?? (phoneTaken ? {} : { [DEMO_COURIER_ID]: seedCourierSpace(now) }),
-    lastError: undefined,
-  };
-}
-
-/**
- * v7: cash on delivery removed for new orders (a draft on cash goes back to
- * Mobile Money; cash orders already placed keep their history), places get a
- * country and a province, buyers get an address book (Jean keeps "Maison" and
- * "Bureau").
- */
-function toV7(s: AppState): AppState {
-  const accounts = Object.fromEntries(Object.entries(s.auth.accounts).map(([id, a]) => [id, { ...a, ...completePlace(a) }]));
-  const seller = Object.fromEntries(
-    Object.entries(s.seller).map(([id, sp]) => [id, { ...sp, profile: sp.profile ? { ...sp.profile, ...completePlace({ ...sp.profile, city: sp.profile.city ?? 'Kinshasa' }) } : sp.profile }]),
-  ) as AppState['seller'];
-  const courier = Object.fromEntries(
-    Object.entries(s.courier).map(([id, sp]) => [id, { ...sp, profile: sp.profile ? { ...sp.profile, ...completePlace({ ...sp.profile, city: sp.profile.city ?? 'Kinshasa' }) } : sp.profile }]),
-  ) as AppState['courier'];
-  return {
-    ...s,
-    version: STATE_VERSION,
-    draft: isCheckoutMethod(s.draft.method) ? s.draft : { ...s.draft, method: 'mobile_money' },
-    auth: { ...s.auth, accounts },
-    seller,
-    courier,
-    addressBook: s.addressBook ?? (accounts['U-1'] ? { 'U-1': demoAddresses } : {}),
     lastError: undefined,
   };
 }
@@ -374,7 +330,6 @@ export function reducer(state: AppState, action: Action): AppState {
         events: log(state, { at: action.at, actor: 'buyer', type: 'cart.removed', detail: action.productId }),
       };
     case 'draft/update':
-      if (action.patch.method && !isCheckoutMethod(action.patch.method)) return state;
       return { ...state, draft: { ...state.draft, ...action.patch } };
 
     case 'social/toggle': {
@@ -524,29 +479,6 @@ export function reducer(state: AppState, action: Action): AppState {
       return reducer(state, { type: 'order/event', orderId: order.id, event: { type: 'courier.decline', by: me.accountId, next }, actor: 'courier', at: action.at });
     }
 
-    case 'address/add': {
-      const acc = currentAccount(state.auth);
-      if (!acc) return reject(state, 'NOT_SIGNED_IN', 'Connecte-toi pour enregistrer une adresse.', action.at);
-      const place = completePlace(action.place);
-      const err = placeError(BUNDLED_GEO[place.country], place);
-      if (err) return reject(state, 'INVALID_ADDRESS', err.message, action.at);
-      if ((place.street?.trim().length ?? 0) < 5) return reject(state, 'INVALID_ADDRESS', 'Indique l’avenue et le numéro, ou un repère.', action.at);
-      const book = state.addressBook[acc.id] ?? [];
-      const address: Address = {
-        id: `A-${acc.id}-${book.length + 1}`,
-        label: action.label.trim() || 'Adresse',
-        line: addressLine(place),
-        phone: acc.phone ? `+243 ${acc.phone.slice(4, 6)} ${acc.phone.slice(6, 9)} ${acc.phone.slice(9)}` : '',
-        place: { ...place, street: place.street?.trim(), quartier: place.quartier?.trim() || undefined },
-      };
-      return {
-        ...state,
-        lastError: undefined,
-        addressBook: { ...state.addressBook, [acc.id]: [...book, address] },
-        draft: { ...state.draft, addressId: address.id },
-      };
-    }
-
     case 'app/setMode': {
       if (action.mode === state.mode) return state;
       if (action.mode === 'seller' && !canUseSellerMode(state)) return reject(state, 'NOT_SELLER', 'Ouvre d’abord ta boutique.', action.at);
@@ -592,8 +524,7 @@ function pay(state: AppState, at: string): AppState {
   if (active?.status === 'pending') return state;
 
   const { draft } = state;
-  if (!isCheckoutMethod(draft.method))
-    return reject(state, 'METHOD_NOT_ALLOWED', 'Le paiement à la livraison n’est plus proposé. Choisis Mobile Money ou carte bancaire.', at);
+  const isCash = draft.method === 'cash';
   const msisdnDigits = draft.msisdn.replace(/\D/g, '');
   if (draft.method === 'mobile_money' && msisdnDigits.length !== 9)
     return reject(state, 'INVALID_MSISDN', 'Saisis un numéro Mobile Money à 9 chiffres.', at);
@@ -609,9 +540,6 @@ function pay(state: AppState, at: string): AppState {
   }
 
   if (state.cart.length === 0) return reject(state, 'EMPTY_CART', 'Ton panier est vide.', at);
-  if (!state.auth.session) return reject(state, 'NOT_SIGNED_IN', 'Connecte-toi pour commander.', at);
-  const address = buyerAddresses(state).find((a) => a.id === draft.addressId);
-  if (!address) return reject(state, 'NO_ADDRESS', 'Ajoute ou choisis une adresse de livraison.', at);
   const summary = summarizeCart(state.cart, state.promoCode);
   const discounts = splitDiscount(
     summary.groups.map((g) => g.itemsTotal),
@@ -647,9 +575,8 @@ function pay(state: AppState, at: string): AppState {
       delivery: 'unassigned',
       receiptCode: receiptCodeFor(seq),
       buyerId: state.auth.session?.accountId,
-      buyer: buyerLabel(state, address),
+      buyer: buyerLabel(state),
       addressId: draft.addressId,
-      dropoff: address.line,
       slotId: draft.slotId,
       courierNote: draft.note.trim() || undefined,
       milestones: { createdAt: at },
@@ -673,7 +600,7 @@ function pay(state: AppState, at: string): AppState {
     activeCheckoutId: checkoutId,
     events: log(state, { at, actor: 'buyer', type: 'checkout.created', checkoutId, detail: orderIds.join(',') }),
   };
-  return request(created, checkout, at);
+  return isCash ? confirmCash(created, checkout, at) : request(created, checkout, at);
 }
 
 /** Identifies the cart content + promo a checkout was created from. */
@@ -685,6 +612,7 @@ export function cartKey(state: Pick<AppState, 'cart' | 'promoCode'>): string {
 /** Sends (or re-sends) the payment request for the current draft method. */
 function request(state: AppState, ck: Checkout, at: string): AppState {
   const { draft } = state;
+  if (draft.method === 'cash') return confirmCash(state, ck, at);
   const attempt = ck.attempt + 1;
   const orders = { ...state.orders };
   for (const id of ck.orderIds) {
@@ -708,6 +636,28 @@ function request(state: AppState, ck: Checkout, at: string): AppState {
     orders,
     checkouts: { ...state.checkouts, [ck.id]: next },
     events: log(state, { at, actor: 'buyer', type: 'payment.requested', checkoutId: ck.id, detail: `${draft.method}#${attempt}` }),
+  };
+}
+
+/** Cash on delivery: order is confirmed now, the courier collects the money at hand-over. */
+function confirmCash(state: AppState, ck: Checkout, at: string): AppState {
+  const orders = { ...state.orders };
+  for (const id of ck.orderIds) {
+    const o = orders[id];
+    if (o) orders[id] = { ...o, method: 'cash', payment: 'pending' };
+  }
+  const purchased = new Set(ck.orderIds.flatMap((id) => orders[id]?.lines.map((l) => `${l.productId}|${l.color}`) ?? []));
+  return {
+    ...state,
+    lastError: undefined,
+    orders,
+    cart: state.cart.filter((l) => !purchased.has(`${l.productId}|${l.color}`)),
+    promoCode: undefined,
+    checkouts: {
+      ...state.checkouts,
+      [ck.id]: { ...ck, method: 'cash', status: 'succeeded', attempt: ck.attempt + 1, failureReason: undefined },
+    },
+    events: log(state, { at, actor: 'buyer', type: 'payment.cash_on_delivery', checkoutId: ck.id }),
   };
 }
 
@@ -743,19 +693,12 @@ export function socialCount(base: number, active: boolean): number {
 
 /* ---------- Seller ---------- */
 
-function buyerLabel(state: AppState, address?: Address): Order['buyer'] {
+function buyerLabel(state: AppState): Order['buyer'] {
   const acc = currentAccount(state.auth);
   if (!acc) return undefined;
   const [first = '', ...rest] = acc.name.split(' ');
   const last = rest.at(-1);
-  const area = address?.place ? address.place.commune || address.place.quartier || address.place.city : undefined;
-  return { name: last ? `${first} ${last[0]}.` : first, commune: area || acc.commune || acc.quartier || acc.city };
-}
-
-/** Delivery addresses of the signed-in buyer (C2). */
-export function buyerAddresses(state: AppState): Address[] {
-  const id = state.auth.session?.accountId;
-  return id ? (state.addressBook[id] ?? []) : [];
+  return { name: last ? `${first} ${last[0]}.` : first, commune: acc.commune };
 }
 
 /** Seller space of the signed-in account, if V1 was saved. */

@@ -1,8 +1,9 @@
 import { Image } from 'expo-image';
-import { ChevronRight, ShieldCheck, Sparkles, TrendingDown, TrendingUp, X, type LucideIcon } from 'lucide-react-native';
-import type { ReactNode } from 'react';
+import { Camera, ChevronRight, ShieldCheck, Sparkles, TrendingDown, TrendingUp, X, type LucideIcon } from 'lucide-react-native';
+import { useState, type ReactNode } from 'react';
 import { StyleSheet, Switch, View } from 'react-native';
 import Animated from 'react-native-reanimated';
+import { products } from '@/domain/catalog';
 import { formatTime } from '@/domain/format';
 import { formatFC } from '@/domain/money';
 import { orderNet, type Photo } from '@/domain/seller';
@@ -13,6 +14,7 @@ import { Button } from './Button';
 import { useEnter } from './Feedback';
 import { PageIndicator } from './Form';
 import { haptic, PressableScale } from './Pressable';
+import { Sheet } from './Sheet';
 import { Badge } from './Status';
 import { Text } from './Text';
 
@@ -190,6 +192,58 @@ export function SwitchRow({ title, subtitle, value, onChange }: { title: string;
 
 /* ---------- Photos (V1 logo, V2 pièces, V9 photos produit) ---------- */
 
+/**
+ * Demo gallery: "Ajouter" picks one of the demo pictures until expo-image-picker
+ * (camera + gallery, supported by Expo Go) is added to the project; it plugs
+ * into `onPick`.
+ */
+const DEMO_GALLERY: Photo[] = Object.values(products)
+  .map((p) => p.image)
+  .filter((x): x is number => x !== undefined);
+
+export function AddPhotoTile({ label = 'Ajouter', size = 96, onPick, title }: { label?: string; size?: number; onPick: (p: Photo) => void; title: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <PressableScale
+        accessibilityRole="button"
+        accessibilityLabel={`${title} : ajouter une photo`}
+        onPress={() => setOpen(true)}
+        haptic="selection"
+        scaleTo={pressScale.card}
+        style={[styles.addTile, { width: size, height: size }]}
+      >
+        <Camera size={20} color={color.icon.secondary} strokeWidth={2} />
+        <Text variant="caption" color={color.text.secondary}>
+          {label}
+        </Text>
+      </PressableScale>
+      <Sheet visible={open} onClose={() => setOpen(false)} title={title}>
+        <Text variant="bodyS" color={color.text.secondary}>
+          Démo : choisis une image. Dans l’app publiée, ce bouton ouvre l’appareil photo ou la galerie.
+        </Text>
+        <View style={styles.gallery}>
+          {DEMO_GALLERY.map((src, i) => (
+            <PressableScale
+              key={i}
+              accessibilityRole="button"
+              accessibilityLabel={`Image de démo ${i + 1}`}
+              onPress={() => {
+                onPick(src);
+                setOpen(false);
+              }}
+              haptic="selection"
+              scaleTo={pressScale.card}
+            >
+              <Image source={src} style={styles.galleryItem} contentFit="cover" />
+            </PressableScale>
+          ))}
+        </View>
+      </Sheet>
+    </>
+  );
+}
+
 export function PhotoTile({ photo, size = 96, onRemove, label }: { photo: Photo; size?: number; onRemove?: () => void; label: string }) {
   return (
     <View style={[styles.photo, { width: size, height: size }]}>
@@ -259,6 +313,15 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     padding: space.lg,
   },
+  addTile: {
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: color.border.strong,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: space.xs,
+  },
   photo: { borderRadius: radius.md, overflow: 'hidden', backgroundColor: color.bg.surfaceSunken },
   remove: {
     position: 'absolute',
@@ -271,6 +334,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  gallery: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, paddingBottom: space.sm },
+  galleryItem: { width: 96, height: 96, borderRadius: radius.md },
   empty: { alignItems: 'center', gap: space.md, paddingTop: space.screen * 2, paddingHorizontal: space.lg },
   emptyIcon: { width: 72, height: 72, borderRadius: 36, backgroundColor: color.bg.surfaceSunken, alignItems: 'center', justifyContent: 'center' },
 });

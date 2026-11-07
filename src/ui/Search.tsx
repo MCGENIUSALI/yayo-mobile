@@ -1,4 +1,4 @@
-import { BadgeCheck, Check, Search, SlidersHorizontal, Truck, X, type LucideIcon } from 'lucide-react-native';
+import { BadgeCheck, Banknote, Check, Search, SlidersHorizontal, Truck, X, type LucideIcon } from 'lucide-react-native';
 import { useState, type ComponentRef, type Ref } from 'react';
 import { Platform, ScrollView, StyleSheet, Switch, TextInput, View, type TextInputProps, type TextStyle } from 'react-native';
 import {
@@ -186,6 +186,13 @@ export function FilterSheet({
             onChange={(verifiedOnly) => set({ verifiedOnly })}
           />
           <ToggleRow icon={Truck} title="Livraison en 24 h" body="Disponible à Kinshasa" value={draft.fastDelivery} onChange={(fastDelivery) => set({ fastDelivery })} />
+          <ToggleRow
+            icon={Banknote}
+            title="Paiement à la livraison"
+            body="Cash accepté"
+            value={draft.cashOnDelivery}
+            onChange={(cashOnDelivery) => set({ cashOnDelivery })}
+          />
         </View>
       </ScrollView>
     </Sheet>
@@ -310,7 +317,7 @@ const styles = StyleSheet.create({
     paddingRight: space.xs,
   },
   fieldFocused: { shadowColor: color.bg.accent, shadowOpacity: 0.25, shadowRadius: 3, shadowOffset: { width: 0, height: 0 } },
-  input: { flex: 1, minWidth: 0, color: color.text.primary, paddingVertical: 0, height: '100%', includeFontPadding: false, textAlignVertical: 'center' },
+  input: { flex: 1, minWidth: 0, color: color.text.primary, paddingVertical: 0, height: '100%' },
   clear: {
     width: 24,
     height: 24,

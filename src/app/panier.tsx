@@ -7,7 +7,6 @@ import { formatFC, formatUSD } from '@/domain/money';
 import { summarizeCart, type CartGroupLine } from '@/domain/pricing';
 import { plural } from '@/domain/format';
 import { useStore } from '@/store/AppStore';
-import { useRequireAccount } from '@/store/useRequireAccount';
 import { duration, pressScale } from '@/theme/motion';
 import { color, radius, space } from '@/theme/tokens';
 import { Button } from '@/ui/Button';
@@ -74,8 +73,6 @@ function CartItem({ line }: { line: CartGroupLine }) {
 /** C1 · Panier multi-vendeur (+ D8 · Panier vide). */
 export default function CartScreen() {
   const { state } = useStore();
-  // Guests fill their cart freely; paying needs an account, then checkout resumes.
-  const requireAccount = useRequireAccount();
   const summary = useMemo(() => summarizeCart(state.cart, state.promoCode), [state.cart, state.promoCode]);
   const empty = summary.groups.length === 0;
 
@@ -131,7 +128,7 @@ export default function CartScreen() {
                 {formatUSD(summary.total)}
               </Text>
             </View>
-            <Button label="Commander" trailingIcon={ArrowRight} onPress={() => requireAccount('/achat/livraison')} style={styles.flex} />
+            <Button label="Commander" trailingIcon={ArrowRight} onPress={() => router.push('/achat/livraison')} style={styles.flex} />
           </BottomBar>
         </>
       )}

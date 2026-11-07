@@ -45,6 +45,8 @@ export interface Shop {
   reviews?: number;
   /** One-line description on B5, e.g. "Électronique et audio". */
   tagline?: string;
+  /** Cash on delivery accepted (B3 filter "Paiement à la livraison"). */
+  acceptsCash?: boolean;
 }
 
 /** Top-level universe a product belongs to (E3 · Catégories). */
@@ -87,8 +89,6 @@ export interface Address {
   label: string;
   line: string;
   phone: string;
-  /** Dependent fields (v7): pays, province, ville, commune, quartier, avenue. */
-  place?: Partial<import('./geo').Place>;
 }
 
 export interface DeliverySlot {

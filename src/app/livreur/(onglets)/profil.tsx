@@ -1,15 +1,15 @@
 import { router } from 'expo-router';
 import { Bike, CircleHelp, LogOut, MapPin, ShieldCheck, ShoppingBag, Star, Store, Wallet } from 'lucide-react-native';
 import { ScrollView, StyleSheet, View } from 'react-native';
+import { initialsOf } from '@/domain/auth';
 import { formatDay } from '@/domain/format';
 import { maskPhone } from '@/domain/seller';
 import { canUseSellerMode } from '@/domain/state';
 import { useCourier } from '@/store/useCourier';
 import { useSwitchMode } from '@/store/useSwitchMode';
 import { color, radius, space } from '@/theme/tokens';
+import { Avatar } from '@/ui/Commerce';
 import { useToast } from '@/ui/Feedback';
-import { forgetPhoto } from '@/ui/media';
-import { ProfilePhotoEditor } from '@/ui/PhotoPicker';
 import { MenuGroup, MenuRow } from '@/ui/Seller';
 import { Text } from '@/ui/Text';
 import { LargeTitleBar } from '@/ui/TopAppBar';
@@ -32,22 +32,7 @@ export default function CourierProfile() {
       <LargeTitleBar title="Mon profil" subtitle="Livreur" />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.card}>
-          <ProfilePhotoEditor
-            name={account?.name ?? ''}
-            photo={account?.avatar}
-            size={56}
-            onSave={(uri) => {
-              const old = account?.avatar;
-              dispatch({ type: 'auth/setAvatar', avatar: uri });
-              if (old !== uri) forgetPhoto(old);
-              toast('Photo de profil mise à jour.', 'success');
-              return true;
-            }}
-            onRemove={() => {
-              forgetPhoto(account?.avatar);
-              dispatch({ type: 'auth/setAvatar', avatar: undefined });
-            }}
-          />
+          <Avatar initials={initialsOf(account?.name ?? '?')} verified={courier?.status === 'verified'} />
           <View style={{ flex: 1 }}>
             <Text variant="h4">{account?.name}</Text>
             {courier?.rating ? (

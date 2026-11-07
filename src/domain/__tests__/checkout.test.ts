@@ -4,20 +4,13 @@ import { detectOperator, formatLocalMsisdn } from '../paymentProvider';
 import { applyOrderEvent, nextRoleEvents } from '../orderMachine';
 import { splitDiscount, summarizeCart } from '../pricing';
 import { pickupCodeFor } from '../seller';
-import { DEMO_PHONE_EXISTING } from '../auth';
-import { confirmedOrders, createInitialState as freshState, reducer, type Action, type AppState } from '../state';
+import { confirmedOrders, createInitialState, reducer, type Action, type AppState } from '../state';
 
 const T0 = '2026-11-02T10:00:00.000Z';
 const at = (s: number) => new Date(new Date(T0).getTime() + s * 1000).toISOString();
 
 function run(state: AppState, ...actions: Action[]): AppState {
   return actions.reduce(reducer, state);
-}
-
-/** Checkout needs an account: Jean (demo buyer, addresses "Maison" and "Bureau") is signed in. */
-function createInitialState(now: string): AppState {
-  const s = run(freshState(now), { type: 'auth/onboarded' }, { type: 'auth/requestCode', kind: 'phone', target: DEMO_PHONE_EXISTING, channel: 'sms', code: '123456', at: now });
-  return reducer(s, { type: 'auth/verifyCode', code: '123456', at: now });
 }
 
 describe('money', () => {
@@ -112,15 +105,12 @@ describe('checkout → escrow', () => {
     expect(s.checkouts[s.activeCheckoutId!]!.orderIds).toHaveLength(1);
   });
 
-  it('no longer offers cash on delivery, even if the draft is forced to it', () => {
+  it('confirms cash on delivery immediately without holding funds', () => {
     let s = createInitialState(T0);
-    s = reducer(s, { type: 'draft/update', patch: { method: 'cash' } });
-    expect(s.draft.method).toBe('mobile_money');
-    // A manipulated draft (old app, edited storage) is refused before any order is created.
-    s = reducer({ ...s, draft: { ...s.draft, method: 'cash' } }, { type: 'checkout/pay', at: at(0) });
-    expect(s.lastError?.code).toBe('METHOD_NOT_ALLOWED');
-    expect(s.activeCheckoutId).toBeUndefined();
-    expect(Object.keys(s.orders)).toEqual(Object.keys(createInitialState(T0).orders));
+    s = run(s, { type: 'draft/update', patch: { method: 'cash' } }, { type: 'checkout/pay', at: at(0) });
+    const ck = s.checkouts[s.activeCheckoutId!]!;
+    expect(ck.status).toBe('succeeded');
+    ck.orderIds.forEach((id) => expect(s.orders[id]!.payment).toBe('pending'));
   });
 
   it('rejects an invalid Mobile Money number', () => {
@@ -174,9 +164,9 @@ describe('order state machine (cross-role)', () => {
     expect(nextRoleEvents(s.orders[id]!)).toEqual(['seller.start_preparing']);
   });
 
-  it('still requires the cash to be collected on a cash order placed before cash on delivery was removed', () => {
-    let { s, id } = paidOrder();
-    s = { ...s, orders: { ...s.orders, [id]: { ...s.orders[id]!, method: 'cash', payment: 'pending' } } };
+  it('requires the cash to be collected for cash-on-delivery orders', () => {
+    let s = run(createInitialState(T0), { type: 'draft/update', patch: { method: 'cash' } }, { type: 'checkout/pay', at: at(0) });
+    const id = s.checkouts[s.activeCheckoutId!]!.orderIds[0]!;
     for (const event of [
       { type: 'seller.start_preparing' },
       { type: 'seller.mark_ready' },

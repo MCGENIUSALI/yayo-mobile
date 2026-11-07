@@ -23,12 +23,8 @@ export const spring = {
   press: { damping: 22, stiffness: 420, mass: 0.6 },
   /** Selection / toggles: slight settle. */
   select: { damping: 18, stiffness: 260, mass: 0.8 },
-} as const;
-
-/** Bottom sheets: one short slide, no bounce (smooth on mid-range Android). */
-export const sheetMotion = {
-  enter: 220,
-  exit: 180,
+  /** Bottom sheets. */
+  sheet: { damping: 26, stiffness: 240, mass: 1 },
 } as const;
 
 export const pressScale = {

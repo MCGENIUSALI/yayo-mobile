@@ -13,8 +13,7 @@ import { Alert, useToast } from '@/ui/Feedback';
 import { Radio } from '@/ui/Form';
 import { BottomBar, Content, Screen } from '@/ui/Layout';
 import { haptic, PressableScale } from '@/ui/Pressable';
-import { AddPhotoTile } from '@/ui/PhotoPicker';
-import { PhotoTile } from '@/ui/Seller';
+import { AddPhotoTile, PhotoTile } from '@/ui/Seller';
 import { Text } from '@/ui/Text';
 import { TopAppBar } from '@/ui/TopAppBar';
 

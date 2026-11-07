@@ -1,16 +1,14 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { communeNames, completePlace, type Place } from '@/domain/geo';
+import { CITIES } from '@/domain/auth';
 import { docsError, isMotorised, normalizePlate, profileError, TRANSPORTS, type CourierProfile, type Transport } from '@/domain/courier';
 import { useCourier } from '@/store/useCourier';
-import { useGeo } from '@/store/geo';
 import { color, space } from '@/theme/tokens';
 import { Button } from '@/ui/Button';
 import { MultiSelectField } from '@/ui/Courier';
 import { useToast } from '@/ui/Feedback';
 import { Chip, TextField } from '@/ui/Form';
-import { LocationFields } from '@/ui/Location';
 import { BottomBar, Content, Screen } from '@/ui/Layout';
 import { haptic } from '@/ui/Pressable';
 import { Steps } from '@/ui/Seller';
@@ -28,23 +26,13 @@ export default function BecomeCourier() {
   const p = courier?.profile;
   const [transport, setTransport] = useState<Transport>(p?.transport ?? 'Moto');
   const [plate, setPlate] = useState(p?.plate ?? '');
-  const [place, setPlace] = useState<Partial<Place>>(() =>
-    completePlace(p ? { country: p.country, province: p.province, city: p.city ?? 'Kinshasa' } : { country: account?.country, province: account?.province, city: account?.city }),
-  );
   const [zones, setZones] = useState<string[]>(p?.zones ?? (account?.commune ? [account.commune] : []));
-  const geo = useGeo(place.country ?? 'CD');
-  const communes = communeNames(geo.status === 'ready' ? geo.data : undefined, place.province, place.city);
-  // A city without an official commune list is one zone: the whole city.
-  const zoneOptions = communes.length > 0 ? communes : place.city ? [place.city] : [];
-  const changePlace = (next: Partial<Place>) => {
-    setPlace(next);
-    if (next.city !== place.city) setZones(next.city && communeNames(geo.status === 'ready' ? geo.data : undefined, next.province, next.city).length === 0 ? [next.city] : []);
-  };
   const [phone, setPhone] = useState(local(p?.payoutPhone ?? account?.phone));
   const [touched, setTouched] = useState(false);
 
-  const profile: CourierProfile = { transport, plate, country: place.country, province: place.province, city: place.city, zones: zones.filter((z) => zoneOptions.includes(z)), payoutPhone: phone };
-  const error = !place.city ? 'Choisis la ville où tu livres.' : profileError(profile);
+  const profile: CourierProfile = { transport, plate, zones, payoutPhone: phone };
+  const error = profileError(profile);
+  const communes = CITIES[account?.city ?? 'Kinshasa'] ?? CITIES.Kinshasa!;
   const plateError = touched && isMotorised(transport) && error?.includes('plaque') ? error : undefined;
   const phoneError = touched && error && /numéro|M-Pesa/.test(error) ? error : undefined;
 
@@ -109,16 +97,7 @@ export default function BecomeCourier() {
           />
         ) : null}
 
-        <LocationFields value={place} onChange={changePlace} upTo="city" quartier="hidden" error={touched && !place.city ? { field: place.province ? 'city' : 'province', message: place.province ? 'Choisis la ville où tu livres.' : 'Choisis ta province.' } : null} />
-        {place.city ? (
-          <MultiSelectField
-            label="Zone de travail"
-            values={profile.zones}
-            options={zoneOptions}
-            onChange={setZones}
-            error={touched && profile.zones.length === 0 ? 'Choisis au moins une commune.' : undefined}
-          />
-        ) : null}
+        <MultiSelectField label="Zone de travail" values={zones} options={communes} onChange={setZones} error={touched && zones.length === 0 ? 'Choisis au moins une commune.' : undefined} />
 
         <TextField
           label="Numéro Mobile Money pour tes gains"

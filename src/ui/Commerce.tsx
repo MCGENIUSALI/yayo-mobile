@@ -141,16 +141,12 @@ export function QuantityStepper({
 
 /* ---------- Avatar (997:259) + Vendor Header (1000:408) ---------- */
 
-export function Avatar({ initials, verified = false, photo }: { initials: string; verified?: boolean; photo?: string | number }) {
+export function Avatar({ initials, verified = false }: { initials: string; verified?: boolean }) {
   return (
     <View style={styles.avatar}>
-      {photo ? (
-        <Image source={photo} style={styles.avatarPhoto} contentFit="cover" accessibilityIgnoresInvertColors />
-      ) : (
-        <Text variant="labelM" color={color.text.accent}>
-          {initials}
-        </Text>
-      )}
+      <Text variant="labelM" color={color.text.accent}>
+        {initials}
+      </Text>
       {verified ? (
         <View style={styles.verified}>
           <BadgeCheck size={14} color={color.icon.info} fill={color.bg.surface} strokeWidth={2} />
@@ -297,7 +293,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarPhoto: { width: 40, height: 40, borderRadius: 20 },
   verified: { position: 'absolute', left: 28, top: 28, width: 14, height: 14, borderRadius: 7, backgroundColor: color.bg.surface },
   vendor: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 48 },
   pill: {

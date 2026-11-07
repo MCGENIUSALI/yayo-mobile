@@ -35,11 +35,7 @@ export interface CourierProfile {
   transport: Transport;
   /** "KN 4521 BB"; empty for bike and on foot. */
   plate: string;
-  /** Where the courier works (v7), see src/domain/geo. Older profiles are in Kinshasa. */
-  country?: string;
-  province?: string;
-  city?: string;
-  /** Communes where the courier takes missions (L1 "Zone de travail"); the whole city where it has no commune list. */
+  /** Communes where the courier takes missions (L1 "Zone de travail"). */
   zones: string[];
   /** E.164 Mobile Money number for the weekly payout. */
   payoutPhone: string;

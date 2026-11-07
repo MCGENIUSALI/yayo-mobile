@@ -88,19 +88,18 @@ describe('missions (US-16, US-17)', () => {
     expect(tabs).toEqual(expect.arrayContaining(['M-5521:proposed', 'M-5530:active', 'M-5498:done']));
   });
 
-  it('runs the whole journey: buyer pays online, seller prepares, courier collects with the seller code and delivers with the buyer code', () => {
-    // Jean buys a JBL speaker with Mobile Money.
+  it('runs the whole journey: buyer pays cash, seller prepares, courier collects with the seller code and delivers with the buyer code', () => {
+    // Jean buys a JBL speaker, cash on delivery.
     let s = signIn(createInitialState(T0), DEMO_PHONE_EXISTING);
     s = run(
       s,
       { type: 'cart/remove', productId: 'jbl-charge-5', color: 'Bleu', at: at(10) },
       { type: 'cart/remove', productId: 'jbl-tune-510', color: 'Noir', at: at(11) },
+      { type: 'draft/update', patch: { method: 'cash' } },
       { type: 'checkout/pay', at: at(12) },
     );
-    const ck = s.checkouts[s.activeCheckoutId!]!;
-    s = reducer(s, { type: 'checkout/providerResult', checkoutId: ck.id, attempt: 1, outcome: 'approved', at: at(15) });
-    const id = ck.orderIds[0]!;
-    expect(s.orders[id]!.payment).toBe('held_in_escrow');
+    const id = s.checkouts[s.activeCheckoutId!]!.orderIds[0]!;
+    const total = s.orders[id]!.total;
     const receipt = s.orders[id]!.receiptCode;
 
     // Grâce prepares it: the dispatcher proposes it to Patrick, who is available.
@@ -125,17 +124,17 @@ describe('missions (US-16, US-17)', () => {
       { type: 'courier/orderEvent', orderId: id, event: { type: 'courier.arrive' }, at: at(70) },
     );
     expect(missionStage(s.orders[id]!)).toBe('handover');
-    s = reducer(s, { type: 'courier/orderEvent', orderId: id, event: { type: 'courier.confirm_delivery', code: '000000' }, at: at(80) });
-    expect(s.orders[id]!.delivery).not.toBe('delivered');
-    s = reducer(s, { type: 'courier/orderEvent', orderId: id, event: { type: 'courier.confirm_delivery', code: receipt }, at: at(81) });
+    s = reducer(s, { type: 'courier/orderEvent', orderId: id, event: { type: 'courier.confirm_delivery', code: receipt }, at: at(80) });
+    expect(s.lastError?.code).toBe('CASH_NOT_COLLECTED');
+    s = reducer(s, { type: 'courier/orderEvent', orderId: id, event: { type: 'courier.confirm_delivery', code: receipt, cashCollected: true }, at: at(81) });
     expect(s.orders[id]!.delivery).toBe('delivered');
     expect(s.orders[id]!.payment).toBe('released');
 
-    // Paid online: nothing to collect. Only the cash of the two older cash orders is due, then paid back.
+    // The cash is due to YA YO, then paid back by Mobile Money.
     const space = activeCourierSpace(s)!;
     const due = cashDue(mine(s), space.remittances);
-    expect(due.orders.map((o) => o.id)).not.toContain(id);
-    expect(due.amount).toBe(185_000 + 115_000);
+    expect(due.orders.map((o) => o.id)).toContain(id);
+    expect(due.amount).toBe(185_000 + 115_000 + total);
     s = reducer(s, { type: 'courier/remitCash', channel: 'mobile_money', at: at(90) });
     expect(cashDue(mine(s), activeCourierSpace(s)!.remittances).amount).toBe(0);
     s = reducer(s, { type: 'courier/remitCash', channel: 'mobile_money', at: at(91) });

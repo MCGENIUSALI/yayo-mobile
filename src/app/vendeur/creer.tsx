@@ -1,8 +1,8 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { Navigation, Store, Tag } from 'lucide-react-native';
+import { MapPin, Navigation, Store, Tag } from 'lucide-react-native';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { BUNDLED_GEO, completePlace, placeError, type Place } from '@/domain/geo';
+import { CITIES } from '@/domain/auth';
 import { profileError, SHOP_CATEGORIES, type ShopProfile } from '@/domain/seller';
 import { useSeller } from '@/store/useSeller';
 import { color, space } from '@/theme/tokens';
@@ -11,10 +11,8 @@ import { Button } from '@/ui/Button';
 import { useToast } from '@/ui/Feedback';
 import { TextField } from '@/ui/Form';
 import { BottomBar, Content, Screen } from '@/ui/Layout';
-import { LocationFields } from '@/ui/Location';
 import { haptic } from '@/ui/Pressable';
-import { AddPhotoTile } from '@/ui/PhotoPicker';
-import { PhotoTile, Steps } from '@/ui/Seller';
+import { AddPhotoTile, PhotoTile, Steps } from '@/ui/Seller';
 import { Text } from '@/ui/Text';
 import { TopAppBar } from '@/ui/TopAppBar';
 
@@ -28,32 +26,13 @@ export default function CreateShop() {
   const [logo, setLogo] = useState(p?.logo);
   const [name, setName] = useState(p?.name ?? '');
   const [category, setCategory] = useState<string | undefined>(p?.category);
-  // Starts from the shop's place, or the owner's (most shops are where their owner lives).
-  const [place, setPlace] = useState<Partial<Place>>(() =>
-    completePlace(
-      p
-        ? { country: p.country, province: p.province, city: p.city ?? 'Kinshasa', commune: p.commune || undefined, quartier: p.quartier }
-        : { country: account?.country, province: account?.province, city: account?.city, commune: account?.commune || undefined, quartier: account?.quartier },
-    ),
-  );
+  const [commune, setCommune] = useState<string | undefined>(p?.commune ?? account?.commune);
   const [address, setAddress] = useState(p?.pickupAddress ?? '');
   const [touched, setTouched] = useState(false);
 
-  const profile: ShopProfile = {
-    name,
-    category: category ?? '',
-    country: place.country,
-    province: place.province,
-    city: place.city,
-    commune: place.commune ?? '',
-    quartier: place.quartier?.trim() || undefined,
-    pickupAddress: address,
-    logo,
-    hours: p?.hours ?? 'Lun–Sam, 8h–18h',
-  };
+  const profile: ShopProfile = { name, category: category ?? '', commune: commune ?? '', pickupAddress: address, logo, hours: p?.hours ?? 'Lun–Sam, 8h–18h' };
   const error = profileError(profile);
-  const full = completePlace(place);
-  const placeIssue = touched ? placeError(BUNDLED_GEO[full.country], full) : null;
+  const communes = CITIES[account?.city ?? 'Kinshasa'] ?? CITIES.Kinshasa!;
 
   const submit = () => {
     setTouched(true);
@@ -89,7 +68,7 @@ export default function CreateShop() {
         </View>
 
         <View style={styles.logoRow}>
-          {logo ? <PhotoTile photo={logo} label="Logo de la boutique" onRemove={() => setLogo(undefined)} /> : <AddPhotoTile title="Logo de la boutique" square onPick={setLogo} />}
+          {logo ? <PhotoTile photo={logo} label="Logo de la boutique" onRemove={() => setLogo(undefined)} /> : <AddPhotoTile title="Logo de la boutique" onPick={setLogo} />}
           <View style={{ flex: 1 }}>
             <Text variant="labelL">Logo de la boutique</Text>
             <Text variant="bodyS" color={color.text.secondary}>
@@ -110,7 +89,10 @@ export default function CreateShop() {
           <SelectField label="Catégorie principale" value={category} placeholder="Choisis une catégorie" options={SHOP_CATEGORIES} onChange={setCategory} />
           {touched && !category ? <FieldError icon={Tag}>Choisis la catégorie principale.</FieldError> : null}
         </View>
-        <LocationFields value={place} onChange={setPlace} error={placeIssue} />
+        <View style={{ gap: space.xs }}>
+          <SelectField label="Commune" value={commune} placeholder="Choisis ta commune" options={communes} onChange={setCommune} />
+          {touched && !commune ? <FieldError icon={MapPin}>Choisis ta commune.</FieldError> : null}
+        </View>
         <View style={{ gap: space.xs }}>
           <TextField
             label="Adresse de collecte"

@@ -10,7 +10,6 @@ import { color, radius, space } from '@/theme/tokens';
 import { HeroIcon } from '@/ui/Feedback';
 import { PressableScale } from '@/ui/Pressable';
 import { Text } from '@/ui/Text';
-import { GuestTab } from '@/ui/GuestPrompt';
 import { LargeTitleBar } from '@/ui/TopAppBar';
 
 interface Notice {
@@ -50,23 +49,7 @@ function notices(state: AppState): Notice[] {
   return out.reverse();
 }
 
-/** Guests see why the tab needs an account; signing in comes back here. */
 export default function AlertsScreen() {
-  const { state } = useStore();
-  if (!state.auth.session)
-    return (
-      <GuestTab
-        title="Alertes"
-        icon={Bell}
-        heading="Tes alertes"
-        body="Connecte-toi pour recevoir le suivi de tes commandes et de tes paiements."
-        resume="/alertes"
-      />
-    );
-  return <AlertsScreenContent />;
-}
-
-function AlertsScreenContent() {
   const { state } = useStore();
   const list = useMemo(() => notices(state), [state]);
   return (

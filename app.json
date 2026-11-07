@@ -26,30 +26,13 @@
     },
     "plugins": [
       "expo-router",
-      [
-        "expo-splash-screen",
-        {
-          "backgroundColor": "#0A0A0B",
-          "image": "./assets/splash-logo.png",
-          "imageWidth": 229,
-          "resizeMode": "contain"
-        }
-      ],
       "expo-image",
       "expo-video",
-      "expo-font",
-      [
-        "expo-image-picker",
-        {
-          "photosPermission": "YA YO utilise tes photos pour ta photo de profil et les photos de tes produits.",
-          "cameraPermission": "YA YO utilise l’appareil photo pour ta photo de profil et les photos de tes produits."
-        }
-      ]
+      "expo-font"
     ],
     "scheme": "yayo",
     "experiments": {
       "typedRoutes": true
-    },
-    "backgroundColor": "#0A0A0B"
+    }
   }
 }

@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { shops } from '@/domain/catalog';
 import { formatDay } from '@/domain/format';
 import { detectOperator } from '@/domain/paymentProvider';
-import { maskPhone, shopArea } from '@/domain/seller';
+import { maskPhone } from '@/domain/seller';
 import { useSeller } from '@/store/useSeller';
 import { useSwitchMode } from '@/store/useSwitchMode';
 import { color, radius, space } from '@/theme/tokens';
@@ -94,7 +94,7 @@ export default function MyShop() {
           </View>
           <View style={styles.badges}>
             {shop.status === 'verified' ? <Badge label="Identité vérifiée" icon={ShieldCheck} tone="success" /> : <Badge label={shop.status === 'submitted' ? 'Vérification en cours' : 'Vérification à faire'} icon={Clock} tone="warning" />}
-            <Badge label={shopArea(p)} icon={MapPin} />
+            <Badge label={p.commune} icon={MapPin} />
           </View>
           <Button
             label="Voir ma boutique comme un client"

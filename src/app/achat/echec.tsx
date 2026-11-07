@@ -16,7 +16,7 @@ function reasonCopy(reason: PaymentFailureReason | undefined, operator: string) 
     case 'insufficient_funds':
       return {
         title: 'Solde Mobile Money insuffisant',
-        body: `Recharge ton compte ${operator} ou paie avec un autre numéro ou par carte bancaire.`,
+        body: `Recharge ton compte ${operator} ou choisis le paiement à la livraison.`,
       };
     case 'expired':
       return {
