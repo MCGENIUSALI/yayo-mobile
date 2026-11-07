@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { FileText, Lock } from 'lucide-react-native';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { kycError } from '@/domain/seller';
+import { kycError, shopArea } from '@/domain/seller';
 import { useSeller } from '@/store/useSeller';
 import { color, space } from '@/theme/tokens';
 import { Button } from '@/ui/Button';
@@ -10,7 +10,8 @@ import { Alert, useToast } from '@/ui/Feedback';
 import { TextField } from '@/ui/Form';
 import { BottomBar, Content, Screen } from '@/ui/Layout';
 import { haptic } from '@/ui/Pressable';
-import { AddPhotoTile, PhotoTile, Steps } from '@/ui/Seller';
+import { AddPhotoTile } from '@/ui/PhotoPicker';
+import { PhotoTile, Steps } from '@/ui/Seller';
 import { Text } from '@/ui/Text';
 import { TopAppBar } from '@/ui/TopAppBar';
 import type { Photo } from '@/domain/seller';
@@ -101,7 +102,7 @@ export default function IdentityCheck() {
         <View style={styles.note}>
           <FileText size={14} color={color.icon.secondary} strokeWidth={2} />
           <Text variant="bodyS" color={color.text.secondary} style={{ flex: 1 }}>
-            Boutique : {shop.profile.name} · {shop.profile.commune}
+            Boutique : {shop.profile.name} · {shopArea(shop.profile)}
           </Text>
         </View>
       </Content>

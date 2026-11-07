@@ -13,6 +13,7 @@ import { Button } from './Button';
 import { useEnter } from './Feedback';
 import { haptic, PressableScale } from './Pressable';
 import { Sheet } from './Sheet';
+import { refocus, useDeferredAutoFocus } from './keyboard';
 import { Text } from './Text';
 
 const noWebOutline = (Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) as TextStyle;
@@ -257,6 +258,7 @@ export function CodeInput({
   autoFocus?: boolean;
 }) {
   const ref = useRef<ComponentRef<typeof TextInput>>(null);
+  const autoFocusNow = useDeferredAutoFocus(ref, autoFocus);
   const [focused, setFocused] = useState(false);
   const reduced = useReducedMotion();
   const shake = useSharedValue(0);
@@ -266,7 +268,7 @@ export function CodeInput({
   }, [error, reduced, shake]);
   const active = Math.min(value.length, length - 1);
   return (
-    <Pressable onPress={() => ref.current?.focus()} accessible={false}>
+    <Pressable onPress={() => refocus(ref.current)} accessible={false}>
       <Animated.View style={[styles.code, shakeStyle]}>
         {Array.from({ length }, (_, i) => {
           const c = value[i];
@@ -290,7 +292,7 @@ export function CodeInput({
         onChangeText={(t) => onChange((kind === 'digits' ? t.replace(/\D/g, '') : t.toUpperCase().replace(/[^A-Z0-9]/g, '')).slice(0, length))}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
-        autoFocus={autoFocus}
+        autoFocus={autoFocusNow}
         autoCapitalize="characters"
         autoCorrect={false}
         keyboardType={kind === 'digits' ? 'number-pad' : 'default'}

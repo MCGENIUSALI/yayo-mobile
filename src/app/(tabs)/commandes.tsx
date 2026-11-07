@@ -18,6 +18,7 @@ import { Segmented } from '@/ui/Form';
 import { PressableScale } from '@/ui/Pressable';
 import { PaymentStatusBadge } from '@/ui/Status';
 import { Text } from '@/ui/Text';
+import { GuestTab } from '@/ui/GuestPrompt';
 import { LargeTitleBar } from '@/ui/TopAppBar';
 
 /** Order Card (Figma 1002:474): the badge shows the escrow payment state (§9). */
@@ -78,8 +79,24 @@ const EMPTY: Record<OrderTab, { title: string; body: string; icon: typeof Packag
   disputes: { title: 'Aucun litige', body: 'Si un colis pose problème, signale-le depuis son suivi.', icon: Scale },
 };
 
-/** D1 · Mes commandes. */
+/** Guests see why the tab needs an account; signing in comes back here. */
 export default function OrdersScreen() {
+  const { state } = useStore();
+  if (!state.auth.session)
+    return (
+      <GuestTab
+        title="Commandes"
+        icon={Package}
+        heading="Suis tes commandes"
+        body="Connecte-toi pour passer commande et suivre tes livraisons en direct."
+        resume="/commandes"
+      />
+    );
+  return <OrdersScreenContent />;
+}
+
+/** D1 · Mes commandes. */
+function OrdersScreenContent() {
   const { state } = useStore();
   const [tab, setTab] = useState<OrderTab>('active');
   const all = useMemo(() => confirmedOrders(state), [state]);

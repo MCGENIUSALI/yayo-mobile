@@ -79,7 +79,6 @@ export const shops: Record<string, Shop> = {
     verified: true,
     deliveryLead: '48–72 h',
     tagline: 'Maison et éclairage',
-    acceptsCash: false,
   },
 };
 
@@ -267,8 +266,20 @@ export const products: Record<string, Product> = {
 };
 
 export const addresses: Address[] = [
-  { id: 'home', label: 'Maison', line: '12, av. Kasa-Vubu, Q. Matonge, Kalamu', phone: '+243 81 234 5678' },
-  { id: 'office', label: 'Bureau', line: '45, bd du 30 Juin, Gombe', phone: '+243 99 876 5432' },
+  {
+    id: 'home',
+    label: 'Maison',
+    line: '12, av. Kasa-Vubu, Q. Matonge, Kalamu',
+    phone: '+243 81 234 5678',
+    place: { country: 'CD', province: 'Kinshasa', city: 'Kinshasa', commune: 'Kalamu', quartier: 'Matonge', street: '12, av. Kasa-Vubu' },
+  },
+  {
+    id: 'office',
+    label: 'Bureau',
+    line: '45, bd du 30 Juin, Gombe',
+    phone: '+243 99 876 5432',
+    place: { country: 'CD', province: 'Kinshasa', city: 'Kinshasa', commune: 'Gombe', street: '45, bd du 30 Juin' },
+  },
 ];
 
 export const deliverySlots: DeliverySlot[] = [

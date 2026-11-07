@@ -1,5 +1,5 @@
 import { Redirect, router, useFocusEffect } from 'expo-router';
-import { Banknote, CreditCard, Lock, Smartphone } from 'lucide-react-native';
+import { CreditCard, Lock, Smartphone } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { formatFC, formatUSD } from '@/domain/money';
@@ -20,7 +20,6 @@ import { TopAppBar } from '@/ui/TopAppBar';
 
 const METHODS: { id: PaymentMethod; title: string; subtitle: string; icon: typeof Smartphone }[] = [
   { id: 'mobile_money', title: 'Mobile Money', subtitle: 'M-Pesa, Orange Money, Airtel Money', icon: Smartphone },
-  { id: 'cash', title: 'Cash à la livraison', subtitle: 'Tu paies le livreur à la réception', icon: Banknote },
   { id: 'card', title: 'Carte bancaire', subtitle: 'Visa, Mastercard', icon: CreditCard },
 ];
 
@@ -154,8 +153,8 @@ export default function PaymentStep() {
       </Content>
       <BottomBar>
         <Button
-          label={draft.method === 'cash' ? 'Confirmer la commande' : `Payer ${formatFC(summary.total)}`}
-          leadingIcon={draft.method === 'cash' ? undefined : Lock}
+          label={`Payer ${formatFC(summary.total)}`}
+          leadingIcon={Lock}
           loading={submitting}
           onPress={pay}
           haptic="medium"

@@ -19,8 +19,22 @@ const StoreContext = createContext<Store | null>(null);
 
 type Boot = { phase: 'loading' } | { phase: 'ready'; initial: AppState };
 
-/** Loads the persisted demo session, then renders the app. */
-export function AppStoreProvider({ children, fallback }: { children: ReactNode; fallback: ReactNode }) {
+/**
+ * Loads the persisted demo session, then renders the app. `fallback` (the boot
+ * splash) shows once `ready` (fonts loaded); `onFirstFrame` then hides the
+ * native splash behind it.
+ */
+export function AppStoreProvider({
+  children,
+  fallback,
+  ready = true,
+  onFirstFrame,
+}: {
+  children: ReactNode;
+  fallback: ReactNode;
+  ready?: boolean;
+  onFirstFrame?: () => void;
+}) {
   const [boot, setBoot] = useState<Boot>({ phase: 'loading' });
   useEffect(() => {
     let cancelled = false;
@@ -37,6 +51,12 @@ export function AppStoreProvider({ children, fallback }: { children: ReactNode; 
       cancelled = true;
     };
   }, []);
+  useEffect(() => {
+    if (ready) onFirstFrame?.();
+    // Once: the native splash is hidden a single time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
+  if (!ready) return null;
   if (boot.phase === 'loading') return <>{fallback}</>;
   return <StoreRuntime initial={boot.initial}>{children}</StoreRuntime>;
 }

@@ -1,17 +1,19 @@
 import { router } from 'expo-router';
-import { Bike, LogOut, RotateCcw, Store } from 'lucide-react-native';
+import { Bike, LogOut, RotateCcw, Store, User as UserIcon } from 'lucide-react-native';
 import { ScrollView, StyleSheet, View } from 'react-native';
-import { currentAccount, displayTarget, initialsOf } from '@/domain/auth';
+import { currentAccount, displayTarget } from '@/domain/auth';
 import { activeCourierSpace, activeSellerSpace, canUseCourierMode, canUseSellerMode, confirmedOrders } from '@/domain/state';
 import { useSwitchMode } from '@/store/useSwitchMode';
 import { useStore } from '@/store/AppStore';
 import { color, radius, space } from '@/theme/tokens';
 import { Button } from '@/ui/Button';
-import { Avatar } from '@/ui/Commerce';
 import { useToast } from '@/ui/Feedback';
 import { Card } from '@/ui/Layout';
+import { forgetPhoto } from '@/ui/media';
+import { ProfilePhotoEditor } from '@/ui/PhotoPicker';
 import { Badge } from '@/ui/Status';
 import { Text } from '@/ui/Text';
+import { GuestTab } from '@/ui/GuestPrompt';
 import { LargeTitleBar } from '@/ui/TopAppBar';
 
 const SCENARIOS = [
@@ -21,8 +23,24 @@ const SCENARIOS = [
   ['81 234 9999', 'jamais validé : la demande expire (C4 → C6)'],
 ] as const;
 
-/** Profil (D7 is a later increment) + demo tools for QA. */
+/** Guests see why the tab needs an account; signing in comes back here. */
 export default function ProfileScreen() {
+  const { state } = useStore();
+  if (!state.auth.session)
+    return (
+      <GuestTab
+        title="Profil"
+        icon={UserIcon}
+        heading="Ton profil YA YO"
+        body="Connecte-toi pour gérer ton compte, ta photo, tes adresses, ou vendre et livrer avec YA YO."
+        resume="/profil"
+      />
+    );
+  return <ProfileScreenContent />;
+}
+
+/** Profil (D7 is a later increment) + demo tools for QA. */
+function ProfileScreenContent() {
   const { state, dispatch } = useStore();
   const toast = useToast();
   const orders = confirmedOrders(state).length;
@@ -39,7 +57,23 @@ export default function ProfileScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <Card>
           <View style={styles.row}>
-            <Avatar initials={initialsOf(account?.name ?? '?')} />
+            <ProfilePhotoEditor
+              name={account?.name ?? ''}
+              photo={account?.avatar}
+              size={56}
+              onSave={(uri) => {
+                const old = account?.avatar;
+                dispatch({ type: 'auth/setAvatar', avatar: uri });
+                if (old !== uri) forgetPhoto(old);
+                toast('Photo de profil mise à jour.', 'success');
+                return true;
+              }}
+              onRemove={() => {
+                forgetPhoto(account?.avatar);
+                dispatch({ type: 'auth/setAvatar', avatar: undefined });
+                toast('Photo de profil supprimée.');
+              }}
+            />
             <View style={{ flex: 1 }}>
               <Text variant="labelL">{account?.name ?? 'Invité'}</Text>
               <Text variant="bodyS" color={color.text.secondary}>

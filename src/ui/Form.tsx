@@ -1,9 +1,10 @@
 import { ChevronDown, type LucideIcon } from 'lucide-react-native';
-import { useState, type ReactNode } from 'react';
-import { Platform, StyleSheet, TextInput, View, type TextInputProps, type TextStyle } from 'react-native';
+import { useRef, useState, type ComponentRef, type ReactNode } from 'react';
+import { Platform, Pressable, StyleSheet, TextInput, View, type TextInputProps, type TextStyle } from 'react-native';
 import Animated, { useAnimatedStyle, useReducedMotion, withSpring, withTiming } from 'react-native-reanimated';
 import { duration, pressScale, spring } from '@/theme/motion';
 import { color, radius, space, type as typeScale } from '@/theme/tokens';
+import { refocus, useDeferredAutoFocus } from './keyboard';
 import { PressableScale } from './Pressable';
 import { Text } from './Text';
 
@@ -124,25 +125,36 @@ export function TextField({
   prefix,
   error,
   muted = false,
+  multiline,
+  autoFocus,
   ...input
 }: TextInputProps & { label: string; prefix?: 'phone-cd'; error?: string; muted?: boolean }) {
+  const ref = useRef<ComponentRef<typeof TextInput>>(null);
+  const autoFocusNow = useDeferredAutoFocus(ref, autoFocus);
   const [focused, setFocused] = useState(false);
   const borderColor = error ? color.text.danger : focused ? color.border.focus : muted ? color.border.subtle : color.border.default;
+  const phone = prefix === 'phone-cd';
   return (
     <View style={{ gap: space.xs }}>
       <Text variant="labelM">{label}</Text>
-      <View
+      {/* The whole box (prefix, padding) focuses the field: small inputs are hard to hit on Android. */}
+      <Pressable
+        accessible={false}
+        onPress={() => refocus(ref.current)}
         style={[
           styles.field,
+          multiline && styles.fieldMultiline,
           {
             borderColor,
             borderWidth: focused || error ? 1.5 : 1,
+            // Same box size focused or not: only the colour changes, nothing moves under the finger.
+            paddingHorizontal: focused || error ? space.lg - 0.5 : space.lg,
             backgroundColor: muted && !focused ? color.bg.surfaceMuted : color.bg.surface,
           },
           focused && !error ? styles.focusRing : null,
         ]}
       >
-        {prefix === 'phone-cd' ? (
+        {phone ? (
           <>
             <View style={styles.prefix} accessibilityLabel="Indicatif République démocratique du Congo, plus 243">
               <Text variant="bodyL">🇨🇩</Text>
@@ -153,9 +165,16 @@ export function TextField({
           </>
         ) : null}
         <TextInput
+          ref={ref}
           accessibilityLabel={label}
           placeholderTextColor={color.text.tertiary}
           selectionColor={color.bg.accent}
+          cursorColor={color.bg.accent}
+          keyboardType={phone ? 'phone-pad' : undefined}
+          autoComplete={phone ? 'tel-national' : undefined}
+          textContentType={phone ? 'telephoneNumber' : undefined}
+          multiline={multiline}
+          autoFocus={autoFocusNow}
           {...input}
           onFocus={(e) => {
             setFocused(true);
@@ -165,9 +184,9 @@ export function TextField({
             setFocused(false);
             input.onBlur?.(e);
           }}
-          style={[typeScale.bodyL, styles.input, noWebOutline]}
+          style={[typeScale.bodyL, styles.input, multiline ? styles.inputMultiline : styles.inputSingle, noWebOutline]}
         />
-      </View>
+      </Pressable>
       {error ? (
         <Text variant="bodyS" color={color.text.danger} accessibilityLiveRegion="polite">
           {error}
@@ -277,13 +296,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   field: {
-    height: 52,
+    minHeight: 52,
     borderRadius: radius.md,
     paddingHorizontal: space.lg,
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.sm,
   },
+  fieldMultiline: { alignItems: 'flex-start', paddingVertical: space.md },
   focusRing: {
     // Focus/Accent effect: 3 px orange ring at 25 %.
     shadowColor: color.bg.accent,
@@ -297,6 +317,9 @@ const styles = StyleSheet.create({
   prefix: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
   prefixDivider: { width: 1, height: 24, backgroundColor: color.border.default },
   input: { flex: 1, color: color.text.primary, paddingVertical: 0, minWidth: 0 },
+  // Android: no extra font padding and a vertically centred line, so the text and caret sit inside the 52 px box.
+  inputSingle: { height: 50, textAlignVertical: 'center', includeFontPadding: false },
+  inputMultiline: { minHeight: 96, textAlignVertical: 'top', includeFontPadding: false },
   dots: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   dot: { height: 8, borderRadius: 4 },
   steps: { flexDirection: 'row', alignItems: 'center', gap: space.sm },

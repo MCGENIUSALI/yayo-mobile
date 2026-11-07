@@ -17,6 +17,7 @@
  */
 
 import { normalizePhone } from './auth';
+import { BUNDLED_GEO, completePlace, placeError } from './geo';
 import { detectOperator } from './paymentProvider';
 import type { FC, MobileMoneyOperator, Order } from './types';
 
@@ -48,7 +49,13 @@ export type ShopStatus = 'draft' | 'submitted' | 'verified';
 export interface ShopProfile {
   name: string;
   category: string;
+  /** Where the shop is (v7): see src/domain/geo. Older shops are in Kinshasa. */
+  country?: string;
+  province?: string;
+  city?: string;
+  /** Empty where the city has no official commune list: the quartier locates the shop then. */
   commune: string;
+  quartier?: string;
   pickupAddress: string;
   logo?: Photo;
   hours: string;
@@ -105,10 +112,15 @@ export interface SellerSpace {
 
 /* ---------- Validation ---------- */
 
+/** Commune, or quartier where there is no commune list (V12 badge, V3 summary). */
+export const shopArea = (p: Pick<ShopProfile, 'commune' | 'quartier'>): string => p.commune || p.quartier || '';
+
 export function profileError(p: ShopProfile): string | null {
   if (p.name.trim().length < 2) return 'Indique le nom de ta boutique.';
   if (!p.category) return 'Choisis la catégorie principale.';
-  if (!p.commune) return 'Choisis ta commune.';
+  const place = completePlace({ country: p.country, province: p.province, city: p.city ?? 'Kinshasa', commune: p.commune || undefined, quartier: p.quartier });
+  const err = placeError(BUNDLED_GEO[place.country], place);
+  if (err) return err.message;
   if (p.pickupAddress.trim().length < 5) return 'Indique l’adresse où le livreur récupère les colis.';
   return null;
 }

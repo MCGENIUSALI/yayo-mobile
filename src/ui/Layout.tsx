@@ -3,7 +3,12 @@ import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View, type Styl
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { color, radius, space } from '@/theme/tokens';
 
-/** Screen background + keyboard handling. Header and bottom bar own their safe areas. */
+/**
+ * Screen background + keyboard handling. Header and bottom bar own their safe areas.
+ * Android draws edge-to-edge (SDK 54+), so the window no longer resizes for the
+ * keyboard: the screen pads itself on both platforms, which keeps the focused
+ * field and the bottom bar buttons above the keyboard.
+ */
 export function Screen({
   children,
   background = color.bg.canvas,
@@ -14,7 +19,7 @@ export function Screen({
   return (
     <KeyboardAvoidingView
       style={[styles.flex, { backgroundColor: background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'web' ? undefined : 'padding'}
     >
       {children}
     </KeyboardAvoidingView>

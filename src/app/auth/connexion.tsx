@@ -6,13 +6,14 @@ import { authReduce, emailError, normalizeEmail, normalizePhone, phoneError, typ
 import { formatLocalMsisdn } from '@/domain/paymentProvider';
 import { useStore } from '@/store/AppStore';
 import { demoOtpCode } from '@/store/otpProvider';
+import { pressScale } from '@/theme/motion';
 import { color, space } from '@/theme/tokens';
 import { Logo, OrDivider } from '@/ui/Auth';
 import { Button } from '@/ui/Button';
 import { Alert, useToast } from '@/ui/Feedback';
 import { Segmented, TextField } from '@/ui/Form';
 import { Content, Screen } from '@/ui/Layout';
-import { haptic } from '@/ui/Pressable';
+import { haptic, PressableScale } from '@/ui/Pressable';
 import { Text } from '@/ui/Text';
 
 /** A5 · Connexion ou inscription: one screen for both, a code instead of a password. */
@@ -61,7 +62,15 @@ export default function SignIn() {
   return (
     <Screen>
       <Content topInset top={space.xl} gap={space.xl} style={styles.grow}>
-        <Logo />
+        <View style={styles.head}>
+          <Logo />
+          {/* Opened from guest browsing: "Plus tard" goes back to what the visitor was looking at. */}
+          {router.canGoBack() ? (
+            <PressableScale accessibilityRole="button" accessibilityLabel="Plus tard, continuer sans compte" onPress={() => router.back()} hitSlop={12} scaleTo={pressScale.icon}>
+              <Text variant="labelM">Plus tard</Text>
+            </PressableScale>
+          ) : null}
+        </View>
         <View style={{ gap: space.sm }}>
           <Text variant="h1" accessibilityRole="header">
             Connexion ou inscription
@@ -157,6 +166,7 @@ export default function SignIn() {
 }
 
 const styles = StyleSheet.create({
+  head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   grow: { flexGrow: 1 },
   spacer: { flexGrow: 1, minHeight: space.xl },
 });

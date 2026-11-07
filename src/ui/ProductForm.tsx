@@ -8,7 +8,8 @@ import { color, radius, space, type as typeScale } from '@/theme/tokens';
 import { SelectField } from './Auth';
 import { Chip, TextField } from './Form';
 import { haptic, PressableScale } from './Pressable';
-import { AddPhotoTile, PhotoTile } from './Seller';
+import { AddPhotoTile } from './PhotoPicker';
+import { PhotoTile } from './Seller';
 import { Sheet } from './Sheet';
 import { Text } from './Text';
 
@@ -36,7 +37,7 @@ export function PhotoStrip({ photos, onChange }: { photos: ProductDraft['photos'
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip}>
       {photos.map((ph, i) => (
-        <View key={i}>
+        <View key={typeof ph === 'string' ? ph : `${ph}-${i}`}>
           <PhotoTile photo={ph} label={i === 0 ? 'Photo de couverture' : `Photo ${i + 1}`} onRemove={() => onChange(photos.filter((_, j) => j !== i))} />
           {i === 0 ? (
             <View style={styles.cover}>
@@ -47,7 +48,14 @@ export function PhotoStrip({ photos, onChange }: { photos: ProductDraft['photos'
           ) : null}
         </View>
       ))}
-      {photos.length < MAX_PHOTOS ? <AddPhotoTile title="Ajouter une photo" onPick={(p) => onChange([...photos, p])} /> : null}
+      {photos.length < MAX_PHOTOS ? (
+        <AddPhotoTile
+          title="Ajouter des photos"
+          max={MAX_PHOTOS - photos.length}
+          // Kept in the order picked; the same image picked twice is added once.
+          onPickMany={(picked) => onChange([...photos, ...picked.filter((p, i) => !photos.includes(p) && picked.indexOf(p) === i)].slice(0, MAX_PHOTOS))}
+        />
+      ) : null}
     </ScrollView>
   );
 }

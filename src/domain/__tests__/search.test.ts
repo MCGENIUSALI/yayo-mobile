@@ -73,7 +73,6 @@ describe('filters (B3)', () => {
     expect(searchProducts('', { ...noFilters, minRating: 4.5 }).every((p) => p.rating >= 4.5)).toBe(true);
     expect(ids(searchProducts('karité', { ...noFilters, verifiedOnly: true }))).toEqual([]);
     expect(ids(searchProducts('', { ...noFilters, fastDelivery: true })).sort()).toEqual(['beurre-karite', 'jbl-pulse-5']);
-    expect(ids(searchProducts('lampe', { ...noFilters, cashOnDelivery: true }))).toEqual([]);
   });
 
   it('counts sheet filters and validates the price range', () => {

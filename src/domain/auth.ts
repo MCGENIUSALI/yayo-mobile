@@ -15,6 +15,8 @@
  * vérifié par le serveur, jamais par l’app.
  */
 
+import { BUNDLED_GEO, completePlace, placeError, type Place } from './geo';
+
 export type Role = 'buyer' | 'seller' | 'courier' | 'admin';
 export type AccountStatus = 'active' | 'suspended';
 export type OtpChannel = 'sms' | 'call' | 'email';
@@ -26,8 +28,17 @@ export interface Account {
   phone?: string;
   email?: string;
   name: string;
+  /** ISO 3166-1 alpha-2 (v7). Older accounts are in the RDC. */
+  country?: string;
+  /** Province (v7), see src/domain/geo. */
+  province?: string;
+  /** Ville or territoire. */
   city: string;
+  /** Empty when the city has no official commune list (the quartier locates the account then). */
   commune: string;
+  quartier?: string;
+  /** Profile photo (local file URI on this device in the demo; a stored file reference with a backend). */
+  avatar?: string;
   roles: Role[];
   /** Roles requested on A8, waiting for YA YO validation (shop check, KYC). */
   pendingRoles: Role[];
@@ -90,11 +101,6 @@ export const OTP_MAX_SENDS_PER_HOUR = 5;
 export const SESSION_IDLE_MS = 7 * 24 * 3_600_000;
 export const SESSION_ABSOLUTE_MS = 30 * 24 * 3_600_000;
 
-export const CITIES: Record<string, string[]> = {
-  Kinshasa: ['Bandalungwa', 'Barumbu', 'Gombe', 'Kalamu', 'Kasa-Vubu', 'Kintambo', 'Limete', 'Lingwala', 'Masina', 'Matete', 'Ngaliema', 'Ndjili'],
-  Lubumbashi: ['Annexe', 'Kampemba', 'Kenya', 'Lubumbashi', 'Rwashi'],
-  Goma: ['Goma', 'Karisimbi'],
-};
 
 const addMs = (iso: string, ms: number) => new Date(new Date(iso).getTime() + ms).toISOString();
 const ms = (iso: string) => new Date(iso).getTime();
@@ -192,6 +198,8 @@ export function createAuthState(): AuthState {
         phone: DEMO_PHONE_EXISTING,
         email: 'jean.mukendi@email.cd',
         name: 'Jean Mukendi',
+        country: 'CD',
+        province: 'Kinshasa',
         city: 'Kinshasa',
         commune: 'Kalamu',
         roles: ['buyer'],
@@ -204,6 +212,8 @@ export function createAuthState(): AuthState {
         id: 'U-2',
         phone: DEMO_PHONE_SUSPENDED,
         name: 'Compte suspendu (démo)',
+        country: 'CD',
+        province: 'Kinshasa',
         city: 'Kinshasa',
         commune: 'Limete',
         roles: ['buyer'],
@@ -227,6 +237,8 @@ export function demoSellerAccount(): Account {
     phone: DEMO_PHONE_SELLER,
     email: 'grace@jblstorekin.cd',
     name: 'Grâce Kabeya',
+    country: 'CD',
+    province: 'Kinshasa',
     city: 'Kinshasa',
     commune: 'Gombe',
     roles: ['buyer', 'seller'],
@@ -242,6 +254,8 @@ export function demoCourierAccount(): Account {
     id: DEMO_COURIER_ID,
     phone: DEMO_PHONE_COURIER,
     name: 'Patrick Kalala',
+    country: 'CD',
+    province: 'Kinshasa',
     city: 'Kinshasa',
     commune: 'Gombe',
     roles: ['buyer', 'courier'],
@@ -261,7 +275,7 @@ export type AuthAction =
   | { type: 'auth/cancelChallenge' }
   | {
       type: 'auth/createAccount';
-      profile: { name: string; city: string; commune: string; email?: string; acceptTerms: boolean };
+      profile: ProfileInput;
       at: string;
     }
   | { type: 'auth/chooseRole'; role: 'buyer' | 'seller' | 'courier'; at: string }
@@ -270,6 +284,8 @@ export type AuthAction =
   | { type: 'auth/leaveBlocked' }
   /** V2 sent: the seller role is requested (never granted by the client). */
   | { type: 'auth/requestRole'; role: 'seller' | 'courier'; at: string }
+  /** Profile photo of the signed-in account: set, replaced, or removed (undefined). */
+  | { type: 'auth/setAvatar'; avatar?: string; at: string }
   /** Demo only: plays the YA YO team validating a pending role. */
   | { type: 'auth/demoGrantRole'; role: 'seller' | 'courier'; at: string };
 
@@ -278,13 +294,25 @@ export type AuthResult = { ok: true; auth: AuthState; event?: string } | { ok: f
 const ok = (auth: AuthState, event?: string): AuthResult => ({ ok: true, auth, event });
 const fail = (code: string, message: string, auth?: AuthState): AuthResult => ({ ok: false, code, message, auth });
 
-export function profileError(p: { name: string; city: string; commune: string; email?: string; acceptTerms: boolean }): string | null {
+export interface ProfileInput extends Partial<Place> {
+  name: string;
+  email?: string;
+  acceptTerms: boolean;
+}
+
+export function profileError(p: ProfileInput): string | null {
   if (p.name.trim().length < 2) return 'Indique ton nom complet.';
-  if (!CITIES[p.city]) return 'Choisis ta ville.';
-  if (!CITIES[p.city]!.includes(p.commune)) return 'Choisis ta commune.';
+  const place = completePlace(p);
+  const err = placeError(BUNDLED_GEO[place.country], place);
+  if (err) return err.message;
   if (p.email?.trim() && !normalizeEmail(p.email)) return 'Cette adresse e-mail n’est pas valide.';
   if (!p.acceptTerms) return 'Accepte les Conditions d’utilisation pour continuer.';
   return null;
+}
+
+function placeOf(p: ProfileInput): Pick<Account, 'country' | 'province' | 'city' | 'commune' | 'quartier'> {
+  const place = completePlace(p);
+  return { country: place.country, province: place.province, city: place.city ?? '', commune: place.commune ?? '', quartier: place.quartier?.trim() || undefined };
 }
 
 export function authReduce(auth: AuthState, a: AuthAction): AuthResult {
@@ -365,8 +393,7 @@ export function authReduce(auth: AuthState, a: AuthAction): AuthResult {
         phone: s.kind === 'phone' ? s.target : undefined,
         email,
         name: a.profile.name.trim().replace(/\s+/g, ' '),
-        city: a.profile.city,
-        commune: a.profile.commune,
+        ...placeOf(a.profile),
         roles: ['buyer'],
         pendingRoles: [],
         status: 'active',
@@ -411,6 +438,13 @@ export function authReduce(auth: AuthState, a: AuthAction): AuthResult {
       return ok({ ...auth, accounts: { ...auth.accounts, [acc.id]: { ...acc, pendingRoles: [...acc.pendingRoles, a.role] } } }, `auth.role.requested.${a.role}`);
     }
 
+    case 'auth/setAvatar': {
+      const acc = auth.session ? auth.accounts[auth.session.accountId] : undefined;
+      if (!acc) return fail('NOT_SIGNED_IN', 'Connecte-toi pour changer ta photo.');
+      if (a.avatar !== undefined && !/^((file|content|blob|data|https?):|\/)/.test(a.avatar)) return fail('INVALID_PHOTO', 'Cette image ne peut pas être utilisée.');
+      return ok({ ...auth, accounts: { ...auth.accounts, [acc.id]: { ...acc, avatar: a.avatar } } }, a.avatar ? 'auth.avatar.set' : 'auth.avatar.removed');
+    }
+
     case 'auth/demoGrantRole': {
       const acc = currentAccount(auth);
       if (!acc) return fail('NO_SESSION', 'Connecte-toi d’abord.');
@@ -440,10 +474,16 @@ function hash(s: string): number {
 }
 
 /** Where the app should be, given the auth state (drives the root navigator). */
-export type AuthGate = 'onboarding' | 'signin' | 'blocked' | 'role' | 'app';
+/**
+ * Where the app starts. The onboarding flag and the session are separate: once
+ * the onboarding is done, a visitor without a session browses as a guest
+ * (catalogue, product pages, shops, feed, cart) and signs in only for what
+ * needs an account (checkout, orders, profile, selling, delivering).
+ */
+export type AuthGate = 'onboarding' | 'guest' | 'blocked' | 'role' | 'app';
 
 export function authGate(auth: AuthState): AuthGate {
   if (auth.session) return auth.needsRoleChoice ? 'role' : 'app';
   if (auth.blocked) return 'blocked';
-  return auth.onboardingDone ? 'signin' : 'onboarding';
+  return auth.onboardingDone ? 'guest' : 'onboarding';
 }

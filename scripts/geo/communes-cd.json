@@ -1,0 +1,29 @@
+{
+  "note": "Communes des villes de la RDC (niveau sous la ville, absent des niveaux 0–2 du RGC). Clé : code ISO de la province + nom de la ville tel qu'écrit dans le RGC. À faire valider par l'équipe YA YO avant la mise en production ; ajouter une ville seulement avec une source officielle.",
+  "cities": {
+    "CD-KN/Kinshasa": {
+      "source": "Ville-province de Kinshasa : 24 communes (Hôtel de Ville de Kinshasa ; Ordonnance-loi n° 68-024 du 20 janvier 1968 et textes modificatifs)",
+      "communes": ["Bandalungwa", "Barumbu", "Bumbu", "Gombe", "Kalamu", "Kasa-Vubu", "Kimbanseke", "Kinshasa", "Kintambo", "Kisenso", "Lemba", "Limete", "Lingwala", "Makala", "Maluku", "Masina", "Matete", "Mont-Ngafula", "Ndjili", "Ngaba", "Ngaliema", "Ngiri-Ngiri", "Nsele", "Selembao"]
+    },
+    "CD-HK/Lubumbashi": {
+      "source": "Ville de Lubumbashi : 7 communes (Mairie de Lubumbashi)",
+      "communes": ["Annexe", "Kamalondo", "Kampemba", "Katuba", "Kenya", "Lubumbashi", "Rwashi"]
+    },
+    "CD-NK/Goma": {
+      "source": "Ville de Goma : 2 communes (Mairie de Goma)",
+      "communes": ["Goma", "Karisimbi"]
+    },
+    "CD-SK/Bukavu": {
+      "source": "Ville de Bukavu : 3 communes (Mairie de Bukavu)",
+      "communes": ["Bagira", "Ibanda", "Kadutu"]
+    },
+    "CD-TO/Kisangani": {
+      "source": "Ville de Kisangani : 6 communes (Mairie de Kisangani)",
+      "communes": ["Kabondo", "Kisangani", "Lubunga", "Makiso", "Mangobo", "Tshopo"]
+    },
+    "CD-BC/Matadi": {
+      "source": "Ville de Matadi : 3 communes (Mairie de Matadi)",
+      "communes": ["Matadi", "Mvuzi", "Nzanza"]
+    }
+  }
+}

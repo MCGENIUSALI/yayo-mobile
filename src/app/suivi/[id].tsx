@@ -87,7 +87,7 @@ export default function TrackingScreen() {
             {order.courier && !delivered ? (
               <Card>
                 <View style={styles.courierRow}>
-                  <Avatar initials={order.courier.initials} verified />
+                  <Avatar initials={order.courier.initials} verified photo={order.courier.id ? state.auth.accounts[order.courier.id]?.avatar : undefined} />
                   <View style={styles.flex}>
                     <Text variant="labelL">{order.courier.name} · ton livreur</Text>
                     <Text variant="caption" color={color.text.secondary}>

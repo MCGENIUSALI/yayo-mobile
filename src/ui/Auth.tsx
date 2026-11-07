@@ -1,14 +1,17 @@
 import { Check, ChevronDown, ShieldCheck, type LucideIcon } from 'lucide-react-native';
 import { useEffect, useRef, useState, type ComponentRef } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, TextInput, View, type TextStyle } from 'react-native';
-import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withSequence, withTiming } from 'react-native-reanimated';
+import Animated, { runOnJS, useAnimatedStyle, useReducedMotion, useSharedValue, withSequence, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { OTP_LENGTH } from '@/domain/auth';
+import { searchNames } from '@/domain/geo';
 import { pressScale } from '@/theme/motion';
 import { color, radius, space } from '@/theme/tokens';
 import { Radio } from './Form';
 import { haptic, PressableScale } from './Pressable';
+import { SearchField } from './Search';
 import { Sheet } from './Sheet';
+import { refocus, useDeferredAutoFocus } from './keyboard';
 import { Text } from './Text';
 
 const noWebOutline = (Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) as TextStyle;
@@ -34,20 +37,43 @@ export function Logo({ size = 'M', inverse = false }: { size?: 'M' | 'XL'; inver
 
 /* ---------- A1 · Splash (boot screen while the session loads) ---------- */
 
+/**
+ * Same composition as the native splash (app.json, assets/splash-logo.png):
+ * logo and tagline centred on the screen, so the hand-over is invisible.
+ */
 export function Splash() {
   const insets = useSafeAreaInsets();
   return (
-    <View style={[styles.splash, { paddingTop: insets.top, paddingBottom: insets.bottom + space.xl }]}>
+    <View style={styles.splash} accessibilityLabel="YA YO, chargement">
       <View style={styles.splashCenter}>
         <Logo size="XL" inverse />
         <Text variant="bodyM" color="rgba(255,255,255,0.72)">
           Vendre mieux, acheter ensemble.
         </Text>
       </View>
-      <Text variant="caption" color="rgba(255,255,255,0.56)" align="center">
+      <Text variant="caption" color="rgba(255,255,255,0.56)" align="center" style={[styles.splashFooter, { bottom: insets.bottom + space.xl }]}>
         Paiement sécurisé · Livraison suivie
       </Text>
     </View>
+  );
+}
+
+/** The boot splash fading out over the first screen (once per launch). */
+export function SplashFadeOut() {
+  const reduced = useReducedMotion();
+  const [done, setDone] = useState(false);
+  const opacity = useSharedValue(1);
+  useEffect(() => {
+    opacity.set(withTiming(0, { duration: reduced ? 0 : 200 }, (finished) => {
+      if (finished) runOnJS(setDone)(true);
+    }));
+  }, [opacity, reduced]);
+  const style = useAnimatedStyle(() => ({ opacity: opacity.get() }));
+  if (done) return null;
+  return (
+    <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, style]}>
+      <Splash />
+    </Animated.View>
   );
 }
 
@@ -67,6 +93,7 @@ export function OtpInput({
   autoFocus?: boolean;
 }) {
   const ref = useRef<ComponentRef<typeof TextInput>>(null);
+  const autoFocusNow = useDeferredAutoFocus(ref, autoFocus);
   const [focused, setFocused] = useState(false);
   const reduced = useReducedMotion();
   const shake = useSharedValue(0);
@@ -79,7 +106,7 @@ export function OtpInput({
   const active = Math.min(value.length, OTP_LENGTH - 1);
 
   return (
-    <Pressable onPress={() => ref.current?.focus()} accessible={false} disabled={disabled}>
+    <Pressable onPress={() => refocus(ref.current)} accessible={false} disabled={disabled}>
       <Animated.View style={[styles.otp, shakeStyle]}>
         {Array.from({ length: OTP_LENGTH }, (_, i) => {
           const digit = value[i];
@@ -112,7 +139,7 @@ export function OtpInput({
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         editable={!disabled}
-        autoFocus={autoFocus}
+        autoFocus={autoFocusNow}
         keyboardType="number-pad"
         inputMode="numeric"
         textContentType="oneTimeCode"
@@ -128,6 +155,9 @@ export function OtpInput({
 
 /* ---------- Select field (A7 Ville / Commune) ---------- */
 
+/** Long lists (provinces, villes, communes) get a search field in the sheet. */
+const SEARCH_FROM = 8;
+
 export function SelectField({
   label,
   value,
@@ -135,6 +165,8 @@ export function SelectField({
   options,
   onChange,
   disabled = false,
+  error,
+  hint,
 }: {
   label: string;
   value?: string;
@@ -142,8 +174,17 @@ export function SelectField({
   options: string[];
   onChange: (v: string) => void;
   disabled?: boolean;
+  error?: string;
+  hint?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const searchable = options.length >= SEARCH_FROM;
+  const shown = searchable ? searchNames(options, query) : options;
+  const close = () => {
+    setOpen(false);
+    setQuery('');
+  };
   return (
     <View style={{ gap: space.xs }}>
       <Text variant="labelM">{label}</Text>
@@ -155,23 +196,38 @@ export function SelectField({
         onPress={() => setOpen(true)}
         haptic="selection"
         scaleTo={pressScale.card}
-        style={[styles.select, disabled && { opacity: 0.5 }]}
+        style={[styles.select, error ? styles.selectError : null, disabled && { opacity: 0.5 }]}
       >
-        <Text variant="bodyL" color={value ? color.text.primary : color.text.tertiary} style={styles.flex}>
+        <Text variant="bodyL" color={value ? color.text.primary : color.text.tertiary} style={styles.flex} numberOfLines={1}>
           {value ?? placeholder}
         </Text>
         <ChevronDown size={20} color={color.icon.secondary} strokeWidth={2} />
       </PressableScale>
-      <Sheet visible={open} onClose={() => setOpen(false)} title={label}>
-        <ScrollView style={{ maxHeight: 420 }} accessibilityRole="radiogroup">
-          {options.map((o) => (
+      {error ? (
+        <Text variant="bodyS" color={color.text.danger} accessibilityLiveRegion="polite">
+          {error}
+        </Text>
+      ) : hint ? (
+        <Text variant="bodyS" color={color.text.tertiary}>
+          {hint}
+        </Text>
+      ) : null}
+      <Sheet visible={open} onClose={close} title={label}>
+        {searchable ? (
+          // The search pill grows in a row (it was made for headers): keep it on its own row at full height.
+          <View style={styles.searchRow}>
+            <SearchField value={query} onChangeText={setQuery} placeholder={`Rechercher (${options.length})`} accessibilityLabel={`Rechercher : ${label}`} autoCorrect={false} />
+          </View>
+        ) : null}
+        <ScrollView style={{ maxHeight: 420 }} accessibilityRole="radiogroup" keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+          {shown.map((o) => (
             <PressableScale
               key={o}
               accessibilityRole="radio"
               accessibilityState={{ checked: o === value }}
               onPress={() => {
                 onChange(o);
-                setOpen(false);
+                close();
               }}
               haptic="selection"
               scaleTo={pressScale.card}
@@ -183,6 +239,11 @@ export function SelectField({
               {o === value ? <Check size={20} color={color.icon.accent} strokeWidth={2.5} /> : null}
             </PressableScale>
           ))}
+          {shown.length === 0 ? (
+            <Text variant="bodyM" color={color.text.secondary} style={styles.noResult}>
+              Aucun résultat pour « {query.trim()} ».
+            </Text>
+          ) : null}
         </ScrollView>
       </Sheet>
     </View>
@@ -290,8 +351,9 @@ const styles = StyleSheet.create({
   yo: { borderRadius: radius.sm, paddingHorizontal: 6 },
   yoXL: { borderRadius: radius.md, paddingHorizontal: 10, paddingVertical: 2 },
   logoXL: { fontSize: 44, lineHeight: 52 },
-  splash: { flex: 1, backgroundColor: color.bg.inverse, justifyContent: 'space-between' },
-  splashCenter: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: space.md },
+  splash: { flex: 1, backgroundColor: color.bg.inverse },
+  splashCenter: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', gap: space.md },
+  splashFooter: { position: 'absolute', left: 0, right: 0 },
   otp: { flexDirection: 'row', justifyContent: 'space-between', gap: space.sm },
   cell: { flex: 1, maxWidth: 52, height: 56, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   cellEmpty: { backgroundColor: color.bg.surfaceSunken, borderWidth: 1, borderColor: color.border.subtle },
@@ -300,6 +362,9 @@ const styles = StyleSheet.create({
   cellError: { backgroundColor: color.bg.surface, borderWidth: 1.5, borderColor: color.text.danger },
   caret: { width: 2, height: 24, borderRadius: 1, backgroundColor: color.bg.accent },
   hiddenInput: { opacity: 0.01, color: 'transparent' },
+  selectError: { borderWidth: 1.5, borderColor: color.text.danger },
+  searchRow: { flexDirection: 'row' },
+  noResult: { paddingVertical: space.lg, textAlign: 'center' },
   select: {
     height: 52,
     borderRadius: radius.md,

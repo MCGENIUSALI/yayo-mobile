@@ -18,7 +18,7 @@ import { TopAppBar } from '@/ui/TopAppBar';
 /** V7 · Remise au livreur: the courier types the seller's code to confirm the pick-up. */
 export default function HandOver() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { orders, dispatch } = useSeller();
+  const { orders, dispatch, state } = useSeller();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const order = orders.find((o) => o.id === id);
@@ -76,7 +76,7 @@ export default function HandOver() {
 
         {order.courier ? (
           <View style={styles.courier}>
-            <Avatar initials={order.courier.initials} verified />
+            <Avatar initials={order.courier.initials} verified photo={order.courier.id ? state.auth.accounts[order.courier.id]?.avatar : undefined} />
             <View style={{ flex: 1 }}>
               <Text variant="labelL">{order.courier.name} arrive</Text>
               <Text variant="bodyS" color={color.text.secondary}>

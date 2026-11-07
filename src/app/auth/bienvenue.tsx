@@ -1,5 +1,6 @@
 import { Image } from 'expo-image';
-import { ArrowRight, Lock, PackageCheck, ShieldCheck, Undo2, type LucideIcon } from 'lucide-react-native';
+import { router } from 'expo-router';
+import { ArrowLeft, ArrowRight, Lock, PackageCheck, ShieldCheck, Undo2, type LucideIcon } from 'lucide-react-native';
 import { useRef, useState, type ComponentRef } from 'react';
 import { FlatList, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -44,7 +45,7 @@ const ESCROW_POINTS: { icon: LucideIcon; text: string }[] = [
   { icon: Undo2, text: 'Remboursé si le colis n’arrive pas ou n’est pas conforme' },
 ];
 
-/** A2–A4 · Onboarding: three pages, swipe or "Suivant", skippable. Shown once. */
+/** A2–A4 · Onboarding: three pages, swipe or Suivant / Précédent, skippable. Shown once, then the feed. */
 export default function Onboarding() {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -52,7 +53,12 @@ export default function Onboarding() {
   const [index, setIndex] = useState(0);
   const list = useRef<ComponentRef<typeof FlatList<Page>>>(null);
   const last = index === PAGES.length - 1;
+  // Done (or skipped) is remembered: the next launches open the feed directly.
   const finish = () => dispatch({ type: 'auth/onboarded' });
+  const go = (next: number) => {
+    list.current?.scrollToIndex({ index: next, animated: true });
+    setIndex(next);
+  };
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top + space.sm }]}>
@@ -84,23 +90,28 @@ export default function Onboarding() {
       />
 
       <View style={[styles.bottom, { paddingBottom: insets.bottom + space.lg }]}>
+        <View style={styles.nav}>
+          {index > 0 ? (
+            <Button label="Précédent" variant="outline" leadingIcon={ArrowLeft} onPress={() => go(index - 1)} style={styles.flex} />
+          ) : null}
+          {last ? (
+            <Button label="Commencer" haptic="medium" onPress={finish} style={styles.flex} />
+          ) : (
+            <Button label="Suivant" trailingIcon={ArrowRight} onPress={() => go(index + 1)} style={styles.flex} />
+          )}
+        </View>
         {last ? (
-          <>
-            <Button label="Commencer" haptic="medium" onPress={finish} fill />
-            <Button label="J’ai déjà un compte" variant="ghost" onPress={finish} fill />
-          </>
-        ) : (
           <Button
-            label="Suivant"
-            trailingIcon={ArrowRight}
+            label="J’ai déjà un compte"
+            variant="ghost"
             onPress={() => {
-              const next = index + 1;
-              list.current?.scrollToIndex({ index: next, animated: true });
-              setIndex(next);
+              finish();
+              // The feed opens first (guest), then the sign-in on top of it.
+              setTimeout(() => router.push('/auth/connexion'), 0);
             }}
             fill
           />
-        )}
+        ) : null}
       </View>
     </View>
   );
@@ -172,4 +183,5 @@ const styles = StyleSheet.create({
   map: { position: 'absolute', left: space.lg, right: space.lg, bottom: space.lg, borderRadius: radius.lg, overflow: 'hidden', height: 150 },
   text: { gap: space.sm },
   bottom: { paddingHorizontal: space.screen, paddingTop: space.lg, gap: space.sm },
+  nav: { flexDirection: 'row', gap: space.md },
 });
