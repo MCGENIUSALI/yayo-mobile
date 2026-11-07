@@ -1,3 +1,4 @@
+import { addressError, toAddress, MAX_ADDRESSES, MAX_SUPPORT_MESSAGE, supportGreeting, type AddressBook, type AddressInput, type DeletionBlocker, type SupportMessage } from './account';
 import {
   authReduce,
   createAuthState,
@@ -10,7 +11,7 @@ import {
   type AuthAction,
   type AuthState,
 } from './auth';
-import { getProduct } from './catalog';
+import { addresses as demoAddresses, getProduct } from './catalog';
 import {
   cashDue,
   courierCard,
@@ -30,6 +31,8 @@ import { pickupCodeFor, revenue, sellerReduce, type SellerAction, type SellerSpa
 import { seedSellerOrders, seedSellerSpace, SELLER_CHECKOUT_ID } from './sellerSeed';
 import { summarizeCart, splitDiscount } from './pricing';
 import type {
+  Address,
+  CancelReason,
   CartLine,
   Checkout,
   Courier,
@@ -39,7 +42,7 @@ import type {
   PaymentMethod,
 } from './types';
 
-export const STATE_VERSION = 6;
+export const STATE_VERSION = 7;
 
 /** Mobile Money request lifetime shown on C4 ("La demande expire dans 01:45"). */
 export const MOMO_REQUEST_TTL_MS = 105_000;
@@ -93,6 +96,10 @@ export interface AppState {
   courier: Record<string, CourierSpace>;
   /** Which app the signed-in account is using (V12 "Passer en mode acheteur"). */
   mode: AppMode;
+  /** D13–D15: delivery addresses per account. */
+  addressBook: Record<string, AddressBook>;
+  /** D17: conversation with the support, per account. */
+  support: Record<string, SupportMessage[]>;
   /** Last rejected action, for UI feedback. Never persisted as business state. */
   lastError?: { code: string; message: string; at: string };
 }
@@ -133,7 +140,20 @@ export type Action =
   | { type: 'checkout/cancelRequest'; checkoutId: string; at: string }
   | { type: 'checkout/close'; checkoutId: string }
   | { type: 'order/event'; orderId: string; event: OrderEvent; actor: DomainEvent['actor']; at: string }
-  | { type: 'demo/reset'; at: string };
+  | { type: 'demo/reset'; at: string }
+  /** D14–D15: new address (no id) or edit. */
+  | { type: 'address/save'; id?: string; input: AddressInput; makeDefault: boolean; at: string }
+  | { type: 'address/delete'; id: string; at: string }
+  | { type: 'address/setDefault'; id: string; at: string }
+  /** D18 · Annuler la commande. */
+  | { type: 'order/cancel'; orderId: string; reason: CancelReason; note?: string; at: string }
+  /** D19: the operator confirms the refund (simulated payment provider). */
+  | { type: 'order/refundReceived'; orderId: string; at: string }
+  /** D17: opening the chat greets the buyer once. */
+  | { type: 'support/open'; at: string }
+  | { type: 'support/send'; text: string; orderId?: string; at: string }
+  /** Demo only: plays the support agent. */
+  | { type: 'support/agentReply'; text: string; at: string };
 
 const addMs = (iso: string, ms: number) => new Date(new Date(iso).getTime() + ms).toISOString();
 
@@ -218,6 +238,8 @@ export function createInitialState(now: string): AppState {
     seller: { [DEMO_SELLER_ID]: seedSellerSpace(now) },
     courier: { [DEMO_COURIER_ID]: seedCourierSpace(now) },
     mode: 'buyer',
+    addressBook: { 'U-1': { items: demoAddresses.map((a) => ({ ...a })), defaultId: 'home' } },
+    support: {},
   };
 }
 
@@ -229,9 +251,10 @@ export function restoreState(saved: unknown, now: string): AppState {
   const s = saved as Partial<AppState> | null;
   if (!s || typeof s !== 'object' || typeof s.version !== 'number') return createInitialState(now);
   if (s.version === STATE_VERSION) return { ...(s as AppState), lastError: undefined };
-  if (s.version === 5 && s.auth && s.seller) return toV6(s as AppState, now);
+  if (s.version === 6 && s.auth && s.seller) return toV7(s as AppState);
+  if (s.version === 5 && s.auth && s.seller) return toV7(toV6(s as AppState, now));
   if ((s.version === 2 || s.version === 3) && s.social) {
-    return toV6(toV5(
+    return toV7(toV6(toV5(
       {
         ...(s as AppState),
         social: { ...s.social, wishlist: s.social.wishlist ?? [] },
@@ -240,9 +263,9 @@ export function restoreState(saved: unknown, now: string): AppState {
         auth: createAuthState(),
       },
       now,
-    ), now);
+    ), now));
   }
-  if (s.version === 4 && s.auth) return toV6(toV5(s as AppState, now), now);
+  if (s.version === 4 && s.auth) return toV7(toV6(toV5(s as AppState, now), now));
   return createInitialState(now);
 }
 
@@ -278,7 +301,7 @@ function toV6(s: AppState, now: string): AppState {
   const auth = s.auth.accounts[DEMO_COURIER_ID] || phoneTaken ? s.auth : { ...s.auth, accounts: { ...s.auth.accounts, [DEMO_COURIER_ID]: demoCourierAccount() } };
   return {
     ...s,
-    version: STATE_VERSION,
+    version: 6,
     orders: withCourierHistory(orders),
     checkouts,
     orderSeq: Math.max(s.orderSeq, 24880),
@@ -288,8 +311,20 @@ function toV6(s: AppState, now: string): AppState {
   };
 }
 
+/** v7 adds the address book (D13), the support chat (D17) and guest browsing (no data change). */
+function toV7(s: AppState): AppState {
+  return {
+    ...s,
+    version: STATE_VERSION,
+    addressBook: s.addressBook ?? (s.auth.accounts['U-1'] ? { 'U-1': { items: demoAddresses.map((a) => ({ ...a })), defaultId: 'home' } } : {}),
+    support: s.support ?? {},
+    lastError: undefined,
+  };
+}
+
 /** Pure reducer: the only place where business state changes. */
 export function reducer(state: AppState, action: Action): AppState {
+  if (action.type === 'auth/deleteAccount') return deleteAccount(state, action);
   if (action.type.startsWith('auth/')) return reduceAuth(state, action as AuthAction & { at?: string });
   if (action.type.startsWith('seller/') && action.type !== 'seller/orderEvent' && action.type !== 'seller/demoCourierPickup')
     return reduceSeller(state, action as SellerAction);
@@ -297,6 +332,8 @@ export function reducer(state: AppState, action: Action): AppState {
     return reduceCourier(state, action as CourierAction);
   switch (action.type) {
     case 'cart/add': {
+      // A9: adding to the cart needs an account; the app resumes the add after sign-in.
+      if (!state.auth.session) return reject(state, 'NOT_SIGNED_IN', 'Connecte-toi pour ajouter au panier.', action.at);
       const product = getProduct(action.productId);
       const existing = state.cart.find((l) => sameLine(l, action.productId, action.color));
       const wanted = (existing?.qty ?? 0) + action.qty;
@@ -486,10 +523,75 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, mode: action.mode };
     }
 
+    case 'address/save':
+    case 'address/delete':
+    case 'address/setDefault':
+      return reduceAddress(state, action);
+
+    case 'order/cancel': {
+      const order = state.orders[action.orderId];
+      const me = state.auth.session?.accountId;
+      if (!me || !order || order.buyerId !== me) return reject(state, 'NOT_FOUND', 'Commande introuvable.', action.at);
+      if (action.note && action.note.length > 280) return reject(state, 'NOTE_TOO_LONG', 'Ton message est trop long (280 caractères au plus).', action.at);
+      return reducer(state, {
+        type: 'order/event',
+        orderId: order.id,
+        event: { type: 'buyer.cancel', reason: action.reason, note: action.note },
+        actor: 'buyer',
+        at: action.at,
+      });
+    }
+
+    case 'order/refundReceived':
+      return reducer(state, { type: 'order/event', orderId: action.orderId, event: { type: 'refund.received' }, actor: 'payment_provider', at: action.at });
+
+    case 'support/open': {
+      const acc = currentAccount(state.auth);
+      if (!acc) return reject(state, 'NOT_SIGNED_IN', 'Connecte-toi pour écrire au support.', action.at);
+      if (state.support[acc.id]?.length) return state;
+      const greeting: SupportMessage = { id: 'M-1', from: 'agent', text: supportGreeting(acc.name.split(' ')[0] ?? ''), at: action.at };
+      return { ...state, support: { ...state.support, [acc.id]: [greeting] } };
+    }
+
+    case 'support/send': {
+      const acc = currentAccount(state.auth);
+      if (!acc) return reject(state, 'NOT_SIGNED_IN', 'Connecte-toi pour écrire au support.', action.at);
+      const text = action.text.trim();
+      if (!text) return reject(state, 'EMPTY_MESSAGE', 'Écris ton message.', action.at);
+      if (text.length > MAX_SUPPORT_MESSAGE) return reject(state, 'MESSAGE_TOO_LONG', 'Ton message est trop long.', action.at);
+      const thread = state.support[acc.id] ?? [];
+      const orderId = action.orderId && state.orders[action.orderId]?.buyerId === acc.id ? action.orderId : undefined;
+      const msg: SupportMessage = { id: `M-${thread.length + 1}`, from: 'me', text, at: action.at, orderId };
+      return {
+        ...state,
+        lastError: undefined,
+        support: { ...state.support, [acc.id]: [...thread, msg] },
+        events: log(state, { at: action.at, actor: 'buyer', type: 'support.message', orderId }),
+      };
+    }
+
+    case 'support/agentReply': {
+      const acc = currentAccount(state.auth);
+      if (!acc) return state;
+      const thread = state.support[acc.id] ?? [];
+      const msg: SupportMessage = { id: `M-${thread.length + 1}`, from: 'agent', text: action.text, at: action.at };
+      return { ...state, support: { ...state.support, [acc.id]: [...thread, msg] } };
+    }
+
     case 'demo/reset': {
       // Resets the shopping demo, not the accounts or the session; the seeded seller gets its shop back.
+      // Demo accounts deleted from D11 come back, so the scenarios stay playable.
       const fresh = createInitialState(action.at);
-      return { ...fresh, auth: state.auth, mode: state.mode, seller: { ...state.seller, ...fresh.seller }, courier: { ...state.courier, ...fresh.courier } };
+      const accounts = { ...fresh.auth.accounts, ...state.auth.accounts };
+      return {
+        ...fresh,
+        auth: { ...state.auth, accounts },
+        mode: state.mode,
+        seller: { ...state.seller, ...fresh.seller },
+        courier: { ...state.courier, ...fresh.courier },
+        addressBook: { ...state.addressBook, ...fresh.addressBook },
+        support: state.support,
+      };
     }
     default:
       return state;
@@ -524,6 +626,9 @@ function pay(state: AppState, at: string): AppState {
   if (active?.status === 'pending') return state;
 
   const { draft } = state;
+  if (!state.auth.session) return reject(state, 'NOT_SIGNED_IN', 'Connecte-toi pour commander.', at);
+  const address = buyerAddresses(state).find((a) => a.id === draft.addressId);
+  if (!address) return reject(state, 'NO_ADDRESS', 'Choisis une adresse de livraison.', at);
   const isCash = draft.method === 'cash';
   const msisdnDigits = draft.msisdn.replace(/\D/g, '');
   if (draft.method === 'mobile_money' && msisdnDigits.length !== 9)
@@ -577,6 +682,8 @@ function pay(state: AppState, at: string): AppState {
       buyerId: state.auth.session?.accountId,
       buyer: buyerLabel(state),
       addressId: draft.addressId,
+      // The order keeps the line it was sent to, even if the address is edited or deleted later.
+      dropoff: address.line,
       slotId: draft.slotId,
       courierNote: draft.note.trim() || undefined,
       milestones: { createdAt: at },
@@ -672,7 +779,7 @@ export const confirmedOrders = (s: AppState): Order[] =>
 export type OrderTab = 'active' | 'delivered' | 'disputes';
 
 export function orderTab(o: Order): OrderTab {
-  if (o.payment === 'disputed' || o.payment === 'refunded') return 'disputes';
+  if (o.cancellation || o.payment === 'disputed' || o.payment === 'refunded') return 'disputes';
   if (o.delivery === 'delivered') return 'delivered';
   return 'active';
 }
@@ -810,4 +917,123 @@ function reduceCourier(state: AppState, action: CourierAction): AppState {
     next = { ...next, lastError: undefined };
   }
   return next;
+}
+
+/* ---------- US-09 · Compte ---------- */
+
+/** Delivery addresses of the signed-in account (C2, D13), default first. */
+export function buyerAddresses(state: AppState): Address[] {
+  const id = state.auth.session?.accountId;
+  const book = id ? state.addressBook[id] : undefined;
+  if (!book) return [];
+  return [...book.items].sort((a, b) => (a.id === book.defaultId ? -1 : b.id === book.defaultId ? 1 : 0));
+}
+
+export function defaultAddressId(state: AppState): string | undefined {
+  const id = state.auth.session?.accountId;
+  const book = id ? state.addressBook[id] : undefined;
+  return book?.defaultId ?? book?.items[0]?.id;
+}
+
+function reduceAddress(state: AppState, action: Extract<Action, { type: 'address/save' | 'address/delete' | 'address/setDefault' }>): AppState {
+  const acc = currentAccount(state.auth);
+  if (!acc) return reject(state, 'NOT_SIGNED_IN', 'Connecte-toi pour gérer tes adresses.', action.at);
+  const book: AddressBook = state.addressBook[acc.id] ?? { items: [] };
+  const save = (next: AddressBook, event: string, extra: Partial<AppState> = {}): AppState => ({
+    ...state,
+    ...extra,
+    lastError: undefined,
+    addressBook: { ...state.addressBook, [acc.id]: next },
+    events: log(state, { at: action.at, actor: 'buyer', type: event }),
+  });
+  switch (action.type) {
+    case 'address/save': {
+      const err = addressError(action.input);
+      if (err) return reject(state, 'INVALID_ADDRESS', err.message, action.at);
+      const editing = action.id ? book.items.find((a) => a.id === action.id) : undefined;
+      if (action.id && !editing) return reject(state, 'NOT_FOUND', 'Adresse introuvable.', action.at);
+      if (!editing && book.items.length >= MAX_ADDRESSES) return reject(state, 'TOO_MANY', `Tu peux enregistrer ${MAX_ADDRESSES} adresses au plus.`, action.at);
+      const id = editing?.id ?? `A-${acc.id}-${Date.parse(action.at).toString(36)}`;
+      const address = toAddress(id, action.input);
+      const items = editing ? book.items.map((a) => (a.id === id ? address : a)) : [...book.items, address];
+      const defaultId = action.makeDefault || !book.defaultId ? id : book.defaultId;
+      // A new address is selected for the order being placed (C2 "Ajouter une adresse").
+      return save({ items, defaultId }, editing ? 'address.updated' : 'address.added', editing ? {} : { draft: { ...state.draft, addressId: id } });
+    }
+    case 'address/delete': {
+      if (!book.items.some((a) => a.id === action.id)) return reject(state, 'NOT_FOUND', 'Adresse introuvable.', action.at);
+      const items = book.items.filter((a) => a.id !== action.id);
+      const defaultId = book.defaultId === action.id ? items[0]?.id : book.defaultId;
+      const draft = state.draft.addressId === action.id ? { ...state.draft, addressId: defaultId ?? '' } : state.draft;
+      return save({ items, defaultId }, 'address.deleted', { draft });
+    }
+    case 'address/setDefault': {
+      if (!book.items.some((a) => a.id === action.id)) return reject(state, 'NOT_FOUND', 'Adresse introuvable.', action.at);
+      return save({ ...book, defaultId: action.id }, 'address.default');
+    }
+  }
+}
+
+/** D10: what still prevents the signed-in account from being deleted (empty = D11 allowed). */
+export function deletionBlockers(state: AppState): DeletionBlocker[] {
+  const acc = currentAccount(state.auth);
+  if (!acc) return [];
+  const out: DeletionBlocker[] = [];
+  for (const o of confirmedOrders(state)) {
+    if (o.cancellation) {
+      if (o.cancellation.refund === 'sent') out.push({ kind: 'refund', orderId: o.id });
+    } else if (o.payment === 'disputed' || o.delivery === 'failed') out.push({ kind: 'dispute', orderId: o.id });
+    else if (o.payment !== 'released' && o.payment !== 'refunded' && o.delivery !== 'delivered') out.push({ kind: 'order', orderId: o.id });
+  }
+  const space = state.seller[acc.id];
+  if (space && shopOrders(state, space.shopId).some((o) => !o.cancellation && o.payment !== 'released' && o.payment !== 'refunded' && o.payment !== 'failed'))
+    out.push({ kind: 'shop' });
+  const courier = state.courier[acc.id];
+  if (courier) {
+    const missions = courierMissions(state, acc.id);
+    if (missions.some((o) => missionTab(o) === 'active') || cashDue(missions, courier.remittances).amount > 0) out.push({ kind: 'courier' });
+  }
+  return out;
+}
+
+/**
+ * D11: deletes the signed-in account once its code is confirmed. Personal data
+ * goes (profile, addresses, support chat, shop and courier files); past orders
+ * stay for the accounts, without the buyer's name.
+ */
+function deleteAccount(state: AppState, action: Extract<AuthAction, { type: 'auth/deleteAccount' }>): AppState {
+  const acc = currentAccount(state.auth);
+  if (!acc) return reject(state, 'NO_SESSION', 'Connecte-toi d’abord.', action.at);
+  if (deletionBlockers(state).length) return reject(state, 'DELETION_BLOCKED', 'Ton compte a encore une activité en cours.', action.at);
+  const r = authReduce(state.auth, action);
+  if (!r.ok) return { ...state, auth: r.auth ?? state.auth, lastError: { code: r.code, message: r.message, at: action.at } };
+  const orders: Record<string, Order> = {};
+  for (const [id, o] of Object.entries(state.orders)) {
+    orders[id] = o.buyerId === acc.id ? { ...o, buyerId: undefined, buyer: o.buyer ? { name: 'Client', commune: o.buyer.commune } : undefined, courierNote: undefined } : o;
+  }
+  const drop = <T,>(rec: Record<string, T>): Record<string, T> => {
+    const next = { ...rec };
+    delete next[acc.id];
+    return next;
+  };
+  const fresh = createInitialState(action.at);
+  return {
+    ...state,
+    auth: r.auth,
+    orders,
+    addressBook: drop(state.addressBook),
+    support: drop(state.support),
+    seller: drop(state.seller),
+    courier: drop(state.courier),
+    // The device's cart and checkout draft belonged to that account.
+    cart: [],
+    promoCode: undefined,
+    draft: fresh.draft,
+    social: fresh.social,
+    activeCheckoutId: undefined,
+    mode: 'buyer',
+    lastError: undefined,
+    // Event type only: never the name, phone or reason text.
+    events: log(state, { at: action.at, actor: 'buyer', type: 'auth.account.deleted' }),
+  };
 }

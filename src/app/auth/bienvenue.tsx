@@ -1,4 +1,5 @@
 import { Image } from 'expo-image';
+import { router } from 'expo-router';
 import { ArrowRight, Lock, PackageCheck, ShieldCheck, Undo2, type LucideIcon } from 'lucide-react-native';
 import { useRef, useState, type ComponentRef } from 'react';
 import { FlatList, StyleSheet, View, useWindowDimensions } from 'react-native';
@@ -44,7 +45,7 @@ const ESCROW_POINTS: { icon: LucideIcon; text: string }[] = [
   { icon: Undo2, text: 'Remboursé si le colis n’arrive pas ou n’est pas conforme' },
 ];
 
-/** A2–A4 · Onboarding: three pages, swipe or "Suivant", skippable. Shown once. */
+/** A2–A4 · Onboarding: three pages, swipe or "Suivant", skippable. Shown once, then the feed opens as a guest. */
 export default function Onboarding() {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -86,8 +87,18 @@ export default function Onboarding() {
       <View style={[styles.bottom, { paddingBottom: insets.bottom + space.lg }]}>
         {last ? (
           <>
+            {/* A4 « Commencer »: straight to the feed as a guest (A10); the account is asked when needed (A9). */}
             <Button label="Commencer" haptic="medium" onPress={finish} fill />
-            <Button label="J’ai déjà un compte" variant="ghost" onPress={finish} fill />
+            <Button
+              label="J’ai déjà un compte"
+              variant="ghost"
+              onPress={() => {
+                finish();
+                // The feed replaces the onboarding first, then A5 opens over it.
+                setTimeout(() => router.push('/auth/connexion'), 350);
+              }}
+              fill
+            />
           </>
         ) : (
           <Button

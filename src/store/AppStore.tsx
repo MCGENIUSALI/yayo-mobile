@@ -51,6 +51,8 @@ function StoreRuntime({ initial, children }: { initial: AppState; children: Reac
   usePersistence(state);
   useSessionCheck(rawDispatch);
   usePaymentProvider(state, rawDispatch);
+  useRefundProvider(state, rawDispatch);
+  useSupportAgent(state, rawDispatch);
 
   const value = useMemo(() => ({ state, dispatch }), [state, dispatch]);
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
@@ -112,6 +114,46 @@ function usePaymentProvider(state: AppState, dispatch: (a: Action) => void) {
     // pendingKey captures id + attempt + status; the reducer also drops stale results.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingKey, foregroundTick, dispatch]);
+}
+
+/** Simulated operator: a refund sent by YA YO (D19) reaches the buyer's account a few seconds later. */
+export const DEMO_REFUND_DELAY_MS = 6_000;
+
+function useRefundProvider(state: AppState, dispatch: (a: Action) => void) {
+  const pending = Object.values(state.orders)
+    .filter((o) => o.cancellation?.refund === 'sent')
+    .map((o) => `${o.id}@${o.cancellation!.at}`)
+    .join(',');
+  useEffect(() => {
+    if (!pending) return;
+    const timers = pending.split(',').map((key) => {
+      const [orderId = '', at = ''] = key.split('@');
+      const dueIn = new Date(at).getTime() + DEMO_REFUND_DELAY_MS - Date.now();
+      return setTimeout(() => dispatch({ type: 'order/refundReceived', orderId, at: new Date().toISOString() }), Math.max(0, dueIn));
+    });
+    return () => timers.forEach(clearTimeout);
+  }, [pending, dispatch]);
+}
+
+/** Demo only: the support agent acknowledges each new message (D17). A real agent answers from the support back-office. */
+function useSupportAgent(state: AppState, dispatch: (a: Action) => void) {
+  const me = state.auth.session?.accountId;
+  const thread = me ? state.support[me] : undefined;
+  const last = thread?.at(-1);
+  const waiting = last?.from === 'me' ? last.id : null;
+  useEffect(() => {
+    if (!waiting) return;
+    const t = setTimeout(
+      () =>
+        dispatch({
+          type: 'support/agentReply',
+          text: 'Bien reçu, merci. Je regarde ta demande et je te réponds ici. Tu recevras aussi une notification.',
+          at: new Date().toISOString(),
+        }),
+      2_500,
+    );
+    return () => clearTimeout(t);
+  }, [waiting, dispatch]);
 }
 
 /** Re-checks the session (idle/absolute expiry, suspension) at launch and on each return to the foreground. */

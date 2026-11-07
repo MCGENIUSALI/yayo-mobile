@@ -18,6 +18,8 @@ const LABELS: Record<OrderEventType, { actor: 'seller' | 'courier'; label: strin
   'courier.collect': { actor: 'courier', label: 'Livreur · colis collecté' },
   'courier.confirm_delivery': { actor: 'courier', label: 'Livreur · saisir le code de réception' },
   'escrow.release': undefined,
+  'buyer.cancel': undefined,
+  'refund.received': undefined,
 };
 
 /**

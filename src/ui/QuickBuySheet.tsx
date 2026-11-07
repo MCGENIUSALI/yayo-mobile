@@ -6,6 +6,7 @@ import { getProduct } from "@/domain/catalog";
 import { formatFC, formatUSD } from "@/domain/money";
 import { addToCartError } from "@/domain/state";
 import { useStore } from "@/store/AppStore";
+import { useRequireAccount } from "@/store/useRequireAccount";
 import { pressScale } from "@/theme/motion";
 import { color, radius, space } from "@/theme/tokens";
 import { Button } from "./Button";
@@ -44,8 +45,9 @@ function SheetBody({
   onClose: () => void;
 }) {
   const product = getProduct(productId);
-  const { state, dispatch } = useStore();
+  const { state } = useStore();
   const toast = useToast();
+  const requireAccount = useRequireAccount();
   const [colorName, setColorName] = useState(product.colors[0]?.name ?? "");
   const [qty, setQty] = useState(1);
   const out = product.stock <= 0;
@@ -57,16 +59,13 @@ function SheetBody({
       toast(error, "danger");
       return;
     }
-    dispatch({
-      type: "cart/add",
-      productId: product.id,
-      color: colorName,
-      qty,
-    });
-    haptic("success");
     onClose();
-    if (then === "cart") router.push("/panier");
-    else toast("Ajouté au panier", "success");
+    const signedIn = !!state.auth.session;
+    // A9: a guest signs in first, then the product is added and the flow resumes.
+    requireAccount({ kind: "addToCart", productId: product.id, color: colorName, qty, then });
+    if (!signedIn) return;
+    haptic("success");
+    if (then === "stay") toast("Ajouté au panier", "success");
   };
 
   return (

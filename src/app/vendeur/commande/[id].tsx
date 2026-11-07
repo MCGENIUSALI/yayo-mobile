@@ -132,13 +132,18 @@ export default function SellerOrderDetail() {
             {order.payment === 'released' ? 'Versé sur ton solde.' : 'Versé après confirmation de la livraison.'}
           </Text>
         </Card>
+        {order.cancellation ? (
+          <Alert tone="warning" title="Commande annulée par l’acheteur" body="Ne prépare pas ce colis. Tu ne reçois rien pour cette commande et l’acheteur est remboursé par YA YO." />
+        ) : null}
         {state.lastError && ['INVALID_TRANSITION', 'PAYMENT_NOT_SECURED', 'NOT_SELLER'].includes(state.lastError.code) ? (
           <Alert tone="danger" title="Action impossible" body={state.lastError.message} />
         ) : null}
       </Content>
 
       <BottomBar>
-        {order.seller === 'new' ? (
+        {order.cancellation ? (
+          <Button label="Retour aux commandes" variant="outline" onPress={() => router.navigate('/vendeur/commandes')} fill />
+        ) : order.seller === 'new' ? (
           <Button label="Préparer la commande" haptic="medium" loading={busy} onPress={() => act('seller.start_preparing')} fill />
         ) : order.seller === 'preparing' ? (
           <Button label="Marquer comme prête pour collecte" haptic="medium" loading={busy} onPress={() => act('seller.mark_ready')} fill />
@@ -147,7 +152,7 @@ export default function SellerOrderDetail() {
         ) : (
           <Button label="Retour aux commandes" variant="outline" onPress={() => router.navigate('/vendeur/commandes')} fill />
         )}
-        {order.seller === 'new' || order.seller === 'preparing' ? (
+        {!order.cancellation && (order.seller === 'new' || order.seller === 'preparing') ? (
           <Button label="Signaler une rupture" variant="ghost" leadingIcon={TriangleAlert} onPress={() => setStockout(true)} fill />
         ) : null}
       </BottomBar>

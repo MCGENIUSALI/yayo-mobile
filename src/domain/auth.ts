@@ -49,6 +49,8 @@ export interface OtpChallenge {
   /** Send times for this target in the current window (rate limit). */
   sends: string[];
   lockedUntil?: string;
+  /** "delete": the code confirms the account deletion (D11), it never signs in. */
+  purpose?: 'signin' | 'delete';
 }
 
 export interface Session {
@@ -70,7 +72,7 @@ export interface AuthState {
   /** Set when the verified identity belongs to a suspended account (E9). */
   blocked?: { accountId: string; at: string };
   /** Why the last session ended, shown once on A5. */
-  signedOutReason?: 'expired' | 'suspended';
+  signedOutReason?: 'expired' | 'suspended' | 'deleted';
   accountSeq: number;
   sessionSeq: number;
 }
@@ -256,7 +258,7 @@ export function demoCourierAccount(): Account {
 
 export type AuthAction =
   | { type: 'auth/onboarded' }
-  | { type: 'auth/requestCode'; kind: IdentifierKind; target: string; channel: OtpChannel; code: string; at: string }
+  | { type: 'auth/requestCode'; kind: IdentifierKind; target: string; channel: OtpChannel; code: string; at: string; purpose?: 'signin' | 'delete' }
   | { type: 'auth/verifyCode'; code: string; at: string }
   | { type: 'auth/cancelChallenge' }
   | {
@@ -271,7 +273,9 @@ export type AuthAction =
   /** V2 sent: the seller role is requested (never granted by the client). */
   | { type: 'auth/requestRole'; role: 'seller' | 'courier'; at: string }
   /** Demo only: plays the YA YO team validating a pending role. */
-  | { type: 'auth/demoGrantRole'; role: 'seller' | 'courier'; at: string };
+  | { type: 'auth/demoGrantRole'; role: 'seller' | 'courier'; at: string }
+  /** D11: the code sent to the signed-in account confirms the deletion. Blockers (D10) are checked by the app state first. */
+  | { type: 'auth/deleteAccount'; code: string; at: string };
 
 export type AuthResult = { ok: true; auth: AuthState; event?: string } | { ok: false; code: string; message: string; auth?: AuthState };
 
@@ -296,6 +300,13 @@ export function authReduce(auth: AuthState, a: AuthAction): AuthResult {
       const target = a.kind === 'phone' ? normalizePhone(a.target) : normalizeEmail(a.target);
       if (!target) return fail('INVALID_TARGET', a.kind === 'phone' ? 'Ce numéro n’est pas un numéro mobile congolais.' : 'Cette adresse e-mail n’est pas valide.');
       if (a.kind === 'email' && a.channel !== 'email') return fail('INVALID_CHANNEL', 'Un e-mail ne peut recevoir le code que par e-mail.');
+      const purpose = a.purpose ?? 'signin';
+      if (purpose === 'delete') {
+        const acc = currentAccount(auth);
+        if (!acc) return fail('NO_SESSION', 'Connecte-toi d’abord.');
+        // The code only goes to the account's own phone (or e-mail when it has no phone).
+        if ((a.kind === 'phone' ? acc.phone : acc.email) !== target) return fail('NOT_OWNER', 'Le code est envoyé au numéro de ton compte.');
+      }
       const prev = auth.challenge?.target === target ? auth.challenge : undefined;
       if (prev?.lockedUntil && ms(a.at) < ms(prev.lockedUntil)) {
         return fail('LOCKED', `Trop d’essais. Réessaie dans ${lockMinutesLeft(prev, a.at)} min.`);
@@ -317,27 +328,17 @@ export function authReduce(auth: AuthState, a: AuthAction): AuthResult {
         expiresAt: addMs(a.at, OTP_TTL_MS),
         attemptsLeft: OTP_MAX_ATTEMPTS,
         sends: [...sends, a.at],
+        purpose,
       };
+      if (purpose === 'delete') return ok({ ...auth, challenge }, 'auth.delete.code_sent');
       return ok({ ...auth, challenge, signup: undefined, blocked: undefined, signedOutReason: undefined }, `auth.otp.sent.${a.channel}`);
     }
 
     case 'auth/verifyCode': {
       const c = auth.challenge;
-      if (!c) return fail('NO_CHALLENGE', 'Demande d’abord un code.');
-      if (c.lockedUntil && ms(a.at) < ms(c.lockedUntil)) {
-        return fail('LOCKED', `Trop d’essais. Attends ${lockMinutesLeft(c, a.at)} min avant de redemander un code.`);
-      }
-      if (c.lockedUntil) return fail('LOCKED', 'Demande un nouveau code.');
-      if (ms(a.at) >= ms(c.expiresAt)) return fail('EXPIRED', 'Ce code a expiré. Demande un nouveau code.');
-      if (a.code !== c.code) {
-        const attemptsLeft = c.attemptsLeft - 1;
-        const next: OtpChallenge = attemptsLeft <= 0 ? { ...c, attemptsLeft: 0, lockedUntil: addMs(a.at, OTP_LOCK_MS) } : { ...c, attemptsLeft };
-        const msg =
-          attemptsLeft <= 0
-            ? 'Code incorrect. Après 3 erreurs, attends 15 minutes avant de redemander un code.'
-            : `Code incorrect. Il te reste ${attemptsLeft} essai${attemptsLeft > 1 ? 's' : ''}. Après 3 erreurs, attends 15 minutes avant de redemander un code.`;
-        return fail(attemptsLeft <= 0 ? 'LOCKED' : 'WRONG_CODE', msg, { ...auth, challenge: next });
-      }
+      if (!c || c.purpose === 'delete') return fail('NO_CHALLENGE', 'Demande d’abord un code.');
+      const bad = checkCode(auth, c, a.code, a.at);
+      if (bad) return bad;
       // Code consumed: single use.
       const base: AuthState = { ...auth, challenge: undefined };
       const account = findAccount(auth, c.kind, c.target);
@@ -418,7 +419,39 @@ export function authReduce(auth: AuthState, a: AuthAction): AuthResult {
       const next: Account = { ...acc, roles: [...acc.roles, a.role], pendingRoles: acc.pendingRoles.filter((r) => r !== a.role) };
       return ok({ ...auth, accounts: { ...auth.accounts, [acc.id]: next } }, `auth.role.granted.${a.role}`);
     }
+
+    case 'auth/deleteAccount': {
+      const acc = currentAccount(auth);
+      if (!acc) return fail('NO_SESSION', 'Connecte-toi d’abord.');
+      const c = auth.challenge;
+      if (!c || c.purpose !== 'delete') return fail('NO_CHALLENGE', 'Demande d’abord un code.');
+      const bad = checkCode(auth, c, a.code, a.at);
+      if (bad) return bad;
+      const accounts = { ...auth.accounts };
+      delete accounts[acc.id];
+      return ok(
+        { ...auth, accounts, challenge: undefined, session: undefined, needsRoleChoice: false, signup: undefined, signedOutReason: 'deleted' },
+        'auth.account.deleted',
+      );
+    }
   }
+}
+
+/** Same rules for every code (A6, D11): expiry, 3 attempts, then a 15-minute lock. Null when the code is right. */
+function checkCode(auth: AuthState, c: OtpChallenge, code: string, at: string): AuthResult | null {
+  if (c.lockedUntil && ms(at) < ms(c.lockedUntil)) {
+    return fail('LOCKED', `Trop d’essais. Attends ${lockMinutesLeft(c, at)} min avant de redemander un code.`);
+  }
+  if (c.lockedUntil) return fail('LOCKED', 'Demande un nouveau code.');
+  if (ms(at) >= ms(c.expiresAt)) return fail('EXPIRED', 'Ce code a expiré. Demande un nouveau code.');
+  if (code === c.code) return null;
+  const attemptsLeft = c.attemptsLeft - 1;
+  const next: OtpChallenge = attemptsLeft <= 0 ? { ...c, attemptsLeft: 0, lockedUntil: addMs(at, OTP_LOCK_MS) } : { ...c, attemptsLeft };
+  const msg =
+    attemptsLeft <= 0
+      ? 'Code incorrect. Après 3 erreurs, attends 15 minutes avant de redemander un code.'
+      : `Code incorrect. Il te reste ${attemptsLeft} essai${attemptsLeft > 1 ? 's' : ''}. Après 3 erreurs, attends 15 minutes avant de redemander un code.`;
+  return fail(attemptsLeft <= 0 ? 'LOCKED' : 'WRONG_CODE', msg, { ...auth, challenge: next });
 }
 
 /** New opaque session id on every sign-in (session fixation). */
@@ -439,11 +472,15 @@ function hash(s: string): number {
   return h;
 }
 
-/** Where the app should be, given the auth state (drives the root navigator). */
-export type AuthGate = 'onboarding' | 'signin' | 'blocked' | 'role' | 'app';
+/**
+ * Where the app should be, given the auth state (drives the root navigator).
+ * After the onboarding, a visitor without a session browses as a guest (A10):
+ * the sign-in (A5) opens only when an action needs an account (A9).
+ */
+export type AuthGate = 'onboarding' | 'guest' | 'blocked' | 'role' | 'app';
 
 export function authGate(auth: AuthState): AuthGate {
   if (auth.session) return auth.needsRoleChoice ? 'role' : 'app';
   if (auth.blocked) return 'blocked';
-  return auth.onboardingDone ? 'signin' : 'onboarding';
+  return auth.onboardingDone ? 'guest' : 'onboarding';
 }

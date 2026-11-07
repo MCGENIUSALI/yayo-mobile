@@ -1,12 +1,13 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Share2, ShoppingCart } from 'lucide-react-native';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ScrollView, Share, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getShop, products } from '@/domain/catalog';
 import { formatFC } from '@/domain/money';
 import { addToCartError } from '@/domain/state';
 import { useStore } from '@/store/AppStore';
+import { useRequireAccount } from '@/store/useRequireAccount';
 import { pressScale } from '@/theme/motion';
 import { color, space } from '@/theme/tokens';
 import { Button } from '@/ui/Button';
@@ -22,11 +23,17 @@ import { IconButton } from '@/ui/TopAppBar';
 
 /** B4 · Fiche produit (+ E6 · Produit en rupture). */
 export default function ProductScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, added } = useLocalSearchParams<{ id: string; added?: string }>();
   const product = id ? products[id] : undefined;
   const insets = useSafeAreaInsets();
-  const { state, dispatch } = useStore();
+  const { state } = useStore();
   const toast = useToast();
+  const requireAccount = useRequireAccount();
+  // Back from A9 sign-in: the product was just added (A9 « tu reprends exactement où tu en étais »).
+  useEffect(() => {
+    if (added) toast('Ajouté au panier', 'success');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [colorName, setColorName] = useState(product?.colors[0]?.name ?? '');
   const [qty, setQty] = useState(1);
 
@@ -45,17 +52,18 @@ export default function ProductScreen() {
   const out = product.stock <= 0;
   const discount = product.compareAt ? Math.round((1 - product.price / product.compareAt) * 100) : 0;
 
-  const add = (then?: () => void) => {
+  const add = (then: 'stay' | 'cart') => {
     const error = addToCartError(state, product.id, colorName, qty);
     if (error) {
       haptic('warning');
       toast(error, 'danger');
       return;
     }
-    dispatch({ type: 'cart/add', productId: product.id, color: colorName, qty });
+    const signedIn = !!state.auth.session;
+    requireAccount({ kind: 'addToCart', productId: product.id, color: colorName, qty, then });
+    if (!signedIn) return;
     haptic('success');
-    if (then) then();
-    else toast('Ajouté au panier', 'success');
+    if (then === 'stay') toast('Ajouté au panier', 'success');
   };
 
   return (
@@ -155,10 +163,10 @@ export default function ProductScreen() {
           <Button label="Produit indisponible" disabled fill style={{ flex: 1 }} />
         ) : (
           <>
-            <Button label="Au panier" variant="outline" leadingIcon={ShoppingCart} onPress={() => add()} haptic="none" />
+            <Button label="Au panier" variant="outline" leadingIcon={ShoppingCart} onPress={() => add('stay')} haptic="none" />
             <Button
               label="Acheter maintenant"
-              onPress={() => add(() => router.push('/panier'))}
+              onPress={() => add('cart')}
               haptic="none"
               style={{ flex: 1 }}
             />

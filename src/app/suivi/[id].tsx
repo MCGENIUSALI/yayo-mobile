@@ -1,13 +1,18 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { Phone, Share2, Store, TriangleAlert, Truck, Bike, PackageCheck, ShieldCheck } from 'lucide-react-native';
+import { Ban, Bike, MessageCircle, PackageCheck, Phone, Share2, ShieldCheck, Store, TriangleAlert, Truck, Undo2 } from 'lucide-react-native';
 import { useMemo } from 'react';
 import { ScrollView, Share, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { getShop } from '@/domain/catalog';
+import { cancelReasonLabel } from '@/domain/account';
+import { formatDayTime } from '@/domain/format';
 import { formatFC } from '@/domain/money';
+import { canCancel } from '@/domain/orderMachine';
+import type { Order } from '@/domain/types';
 import { incidentLabel } from '@/domain/courier';
 import { buildTimeline, etaLabel, showReceiptCode, type StepKey } from '@/domain/tracking';
 import { useStore } from '@/store/AppStore';
+import { useOpenWithAccount } from '@/store/useRequireAccount';
 import { color, space } from '@/theme/tokens';
 import { Button } from '@/ui/Button';
 import { Avatar, SummaryRow, VendorHeader } from '@/ui/Commerce';
@@ -50,6 +55,8 @@ export default function TrackingScreen() {
       </Screen>
     );
   }
+
+  if (order.cancellation) return <CancelledOrder order={order} />;
 
   const shop = getShop(order.shopId);
   const time = etaLabel(order);
@@ -155,6 +162,17 @@ export default function TrackingScreen() {
             <SummaryRow label="Total" value={formatFC(order.total)} />
           </Card>
 
+          {canCancel(order) ? (
+            <Button
+              label="Annuler la commande"
+              variant="outline"
+              leadingIcon={Ban}
+              haptic="selection"
+              onPress={() => router.push({ pathname: '/suivi/annuler/[id]', params: { id: order.id } })}
+              fill
+            />
+          ) : null}
+
           {!delivered ? (
             <Button
               label="Signaler un problème"
@@ -167,6 +185,75 @@ export default function TrackingScreen() {
           ) : null}
 
           <DemoConsole order={order} />
+        </View>
+      </ScrollView>
+    </Screen>
+  );
+}
+
+/** D19 · Commande annulée: the refund goes back to the payment method, in full. */
+function CancelledOrder({ order }: { order: Order }) {
+  const { state } = useStore();
+  const openWithAccount = useOpenWithAccount();
+  const c = order.cancellation!;
+  const checkout = state.checkouts[order.checkoutId];
+  const prepaid = c.refund !== 'none';
+  const destination =
+    order.method === 'card' ? 'Ta carte bancaire' : checkout?.operator ? `${checkout.operator}${checkout.msisdn ? ` · ${checkout.msisdn}` : ''}` : 'Ton compte Mobile Money';
+  const steps = [
+    { key: 'cancelled', title: 'Commande annulée', description: formatDayTime(c.at), state: 'done' as const, icon: Ban },
+    ...(prepaid
+      ? [
+          { key: 'sent', title: 'Remboursement envoyé', description: `${formatFC(order.total)} vers ${destination}`, state: 'done' as const, icon: Undo2 },
+          {
+            key: 'received',
+            title: 'Remboursement reçu',
+            description: c.refund === 'received' && c.refundedAt ? formatDayTime(c.refundedAt) : 'En général sous quelques minutes, au plus 48 h selon l’opérateur.',
+            state: c.refund === 'received' ? ('done' as const) : ('current' as const),
+            icon: ShieldCheck,
+          },
+        ]
+      : []),
+  ];
+  return (
+    <Screen>
+      <TopAppBar title={`Commande #${order.id}`} onBack={() => (router.canGoBack() ? router.back() : router.navigate('/commandes'))} />
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <View style={styles.content}>
+          <Alert
+            tone={c.refund === 'received' || !prepaid ? 'escrow' : 'info'}
+            icon={prepaid ? Undo2 : Ban}
+            title={!prepaid ? 'Commande annulée' : c.refund === 'received' ? 'Tu as été remboursé' : 'Remboursement en cours'}
+            body={
+              !prepaid
+                ? 'Tu devais payer à la livraison : rien n’a été débité. Le vendeur a été prévenu.'
+                : c.refund === 'received'
+                  ? `${formatFC(order.total)} sont revenus sur ${destination}.`
+                  : `YA YO te rembourse ${formatFC(order.total)} sur ${destination}. Le vendeur a été prévenu.`
+            }
+          />
+          <View accessibilityRole="list">
+            {steps.map((s, i) => (
+              <TimelineStep key={s.key} title={s.title} description={s.description} state={s.state} icon={s.icon} last={i === steps.length - 1} />
+            ))}
+          </View>
+          <Card gap={space.sm}>
+            <SummaryRow label="Motif" value={cancelReasonLabel(c.reason)} />
+            {c.note ? <SummaryRow label="Précision" value={c.note} /> : null}
+            <SummaryRow label="Articles" value={formatFC(order.itemsTotal)} />
+            <SummaryRow label="Livraison" value={formatFC(order.deliveryFee)} />
+            {order.discount > 0 ? <SummaryRow label="Réduction" value={formatFC(-order.discount)} type="discount" /> : null}
+            <Divider />
+            <SummaryRow label={prepaid ? 'Montant remboursé' : 'Montant débité'} value={formatFC(prepaid ? order.total : 0)} />
+          </Card>
+          <Button
+            label="Contacter le support"
+            variant="outline"
+            leadingIcon={MessageCircle}
+            onPress={() => openWithAccount({ pathname: '/aide/discussion', params: { order: order.id } })}
+            fill
+          />
+          <Button label="Continuer mes achats" variant="ghost" onPress={() => router.navigate('/')} fill />
         </View>
       </ScrollView>
     </Screen>

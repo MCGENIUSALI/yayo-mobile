@@ -267,8 +267,25 @@ export const products: Record<string, Product> = {
 };
 
 export const addresses: Address[] = [
-  { id: 'home', label: 'Maison', line: '12, av. Kasa-Vubu, Q. Matonge, Kalamu', phone: '+243 81 234 5678' },
-  { id: 'office', label: 'Bureau', line: '45, bd du 30 Juin, Gombe', phone: '+243 99 876 5432' },
+  {
+    id: 'home',
+    label: 'Maison',
+    line: '12, av. Kasa-Vubu, Q. Matonge, Kalamu',
+    phone: '+243 81 234 5678',
+    city: 'Kinshasa',
+    commune: 'Kalamu',
+    street: '12, av. Kasa-Vubu, Q. Matonge',
+    landmark: 'En face de la pharmacie',
+  },
+  {
+    id: 'office',
+    label: 'Bureau',
+    line: '45, bd du 30 Juin, Gombe',
+    phone: '+243 99 876 5432',
+    city: 'Kinshasa',
+    commune: 'Gombe',
+    street: '45, bd du 30 Juin',
+  },
 ];
 
 export const deliverySlots: DeliverySlot[] = [

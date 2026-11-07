@@ -24,7 +24,7 @@ export default function SellerDashboard() {
   const d = dashboard(orders, now);
   const unread = shop ? sellerNotices(orders, shop.products, now).filter((n) => !shop.readNotifications.includes(n.id)).length : 0;
   const firstName = account?.name.split(' ')[0] ?? '';
-  const fresh = orders.filter((o) => o.seller === 'new');
+  const fresh = orders.filter((o) => o.seller === 'new' && !o.cancellation);
   const catalogShop = shop?.status === 'verified' ? safeShop(shop.shopId) : undefined;
   const salesTrend = trend(d.salesToday, d.salesYesterday);
   const rating = catalogShop?.rating;

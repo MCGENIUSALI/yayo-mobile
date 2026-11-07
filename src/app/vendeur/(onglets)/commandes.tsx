@@ -18,7 +18,9 @@ const EMPTY: Record<SellerOrderTab, { title: string; body: string; icon: typeof 
 
 /** V5 · Commandes (seller). */
 export default function SellerOrders() {
-  const { shop, orders } = useSeller();
+  const { shop, orders: all } = useSeller();
+  // D18: an order cancelled by the buyer leaves the work queue (the seller is notified).
+  const orders = all.filter((o) => !o.cancellation);
   const nav = useSellerOrderNav();
   const [tab, setTab] = useState<SellerOrderTab>('new');
   const count = (t: SellerOrderTab) => orders.filter((o) => sellerTab(o) === t).length;

@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { Globe } from 'lucide-react-native';
+import { Globe, X } from 'lucide-react-native';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { authReduce, emailError, normalizeEmail, normalizePhone, phoneError, type IdentifierKind } from '@/domain/auth';
@@ -14,6 +14,7 @@ import { Segmented, TextField } from '@/ui/Form';
 import { Content, Screen } from '@/ui/Layout';
 import { haptic } from '@/ui/Pressable';
 import { Text } from '@/ui/Text';
+import { IconButton } from '@/ui/TopAppBar';
 
 /** A5 · Connexion ou inscription: one screen for both, a code instead of a password. */
 export default function SignIn() {
@@ -61,7 +62,11 @@ export default function SignIn() {
   return (
     <Screen>
       <Content topInset top={space.xl} gap={space.xl} style={styles.grow}>
-        <Logo />
+        <View style={styles.head}>
+          <Logo />
+          {/* Opened from A9 or A10: the guest can go back to browsing. */}
+          {router.canGoBack() ? <IconButton icon={X} label="Fermer, continuer sans compte" onPress={() => router.back()} /> : null}
+        </View>
         <View style={{ gap: space.sm }}>
           <Text variant="h1" accessibilityRole="header">
             Connexion ou inscription
@@ -157,6 +162,7 @@ export default function SignIn() {
 }
 
 const styles = StyleSheet.create({
+  head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   grow: { flexGrow: 1 },
   spacer: { flexGrow: 1, minHeight: space.xl },
 });

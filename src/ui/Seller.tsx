@@ -77,6 +77,7 @@ export function NewBadge() {
 }
 
 export function EscrowBadge({ order }: { order: Order }) {
+  if (order.cancellation) return <Badge label="Annulée par l’acheteur" tone="neutral" />;
   if (order.method === 'cash') return <Badge label="Paiement à la livraison" tone="neutral" />;
   if (order.payment === 'released') return <Badge label="Paiement libéré" icon={ShieldCheck} tone="success" />;
   return <Badge label="Fonds sécurisés" icon={ShieldCheck} tone="escrow" />;
@@ -143,9 +144,25 @@ export function MenuGroup({ title, children }: { title: string; children: ReactN
   );
 }
 
-export function MenuRow({ icon: Icon, title, subtitle, onPress, tone = 'default' }: { icon: LucideIcon; title: string; subtitle?: string; onPress: () => void; tone?: 'default' | 'danger' }) {
+export function MenuRow({
+  icon: Icon,
+  title,
+  subtitle,
+  value,
+  onPress,
+  tone = 'default',
+}: {
+  icon: LucideIcon;
+  title: string;
+  subtitle?: string;
+  /** Short trailing value, e.g. "2" or "Français" (D7). */
+  value?: string;
+  onPress: () => void;
+  tone?: 'default' | 'danger';
+}) {
+  const a11y = [title, subtitle, value].filter(Boolean).join(', ');
   return (
-    <PressableScale accessibilityRole="button" accessibilityLabel={subtitle ? `${title}, ${subtitle}` : title} onPress={onPress} haptic="selection" scaleTo={pressScale.card} style={styles.menuRow}>
+    <PressableScale accessibilityRole="button" accessibilityLabel={a11y} onPress={onPress} haptic="selection" scaleTo={pressScale.card} style={styles.menuRow}>
       <View style={styles.menuIcon}>
         <Icon size={20} color={tone === 'danger' ? color.icon.danger : color.icon.primary} strokeWidth={2} />
       </View>
@@ -159,6 +176,11 @@ export function MenuRow({ icon: Icon, title, subtitle, onPress, tone = 'default'
           </Text>
         ) : null}
       </View>
+      {value ? (
+        <Text variant="bodyM" color={color.text.secondary}>
+          {value}
+        </Text>
+      ) : null}
       <ChevronRight size={20} color={color.icon.secondary} strokeWidth={2} />
     </PressableScale>
   );

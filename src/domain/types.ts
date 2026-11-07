@@ -86,9 +86,31 @@ export interface CartLine {
 
 export interface Address {
   id: string;
+  /** "Maison", "Bureau", "Chez maman" (D14 "Nom de l’adresse"). */
   label: string;
+  /** Line shown on C2, V6 and to the courier, built from the fields below. */
   line: string;
+  /** "+243 81 234 5678": who answers the courier on site. */
   phone: string;
+  city?: string;
+  commune?: string;
+  /** "Q. Matonge, 12 av. Kasa-Vubu" (D14 "Quartier, avenue et numéro"). */
+  street?: string;
+  /** "En face de la pharmacie" (D14 "Repère pour le livreur"). */
+  landmark?: string;
+}
+
+/** D18 · Pourquoi annules-tu ? */
+export type CancelReason = 'wrong_item' | 'too_slow' | 'cheaper' | 'other';
+
+/** D18–D19: cancelled by the buyer before the hand-over; prepaid money goes back to where it came from. */
+export interface OrderCancellation {
+  reason: CancelReason;
+  note?: string;
+  at: string;
+  /** none: nothing was paid (cash on delivery); sent: YA YO sent the refund; received: the operator confirmed it. */
+  refund: 'none' | 'sent' | 'received';
+  refundedAt?: string;
 }
 
 export interface DeliverySlot {
@@ -126,6 +148,7 @@ export interface OrderMilestones {
   releasedAt?: string;
   failedAt?: string;
   disputedAt?: string;
+  cancelledAt?: string;
 }
 
 /**
@@ -160,6 +183,8 @@ export interface Order {
   dropoff?: string;
   /** L9 · Incident declared by the courier; YA YO decides what happens next. */
   incident?: DeliveryIncident;
+  /** D18 · Cancelled by the buyer. */
+  cancellation?: OrderCancellation;
   cashCollected?: boolean;
   milestones: OrderMilestones;
 }

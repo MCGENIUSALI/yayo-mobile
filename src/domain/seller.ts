@@ -185,6 +185,8 @@ export function orderNet(o: Pick<Order, 'itemsTotal'>): OrderNet {
 
 /** Payment secured for the seller: escrow for prepaid orders, confirmed cash order otherwise. */
 export function orderSecured(o: Order): boolean {
+  // D18: a cancelled order earns the seller nothing.
+  if (o.cancellation) return false;
   if (o.method === 'cash') return o.payment !== 'failed' && o.payment !== 'initiated' && o.payment !== 'refunded';
   return ['held_in_escrow', 'in_delivery', 'delivered', 'released', 'disputed'].includes(o.payment);
 }
@@ -306,6 +308,16 @@ export interface SellerNotice {
 
 export function sellerNotices(orders: Order[], products: SellerProduct[], now: string): SellerNotice[] {
   const out: SellerNotice[] = [];
+  for (const o of orders.filter((x) => x.cancellation)) {
+    out.push({
+      id: `cancel-${o.id}`,
+      kind: 'order',
+      at: o.cancellation!.at,
+      title: `Commande #${o.id} annulée`,
+      body: 'L’acheteur a annulé avant la remise au livreur. Ne prépare pas ce colis.',
+      orderId: o.id,
+    });
+  }
   for (const o of orders.filter(orderSecured)) {
     const items = o.lines.map((l) => `${l.qty}× ${l.name.split(' – ')[0]}`).join(', ');
     out.push({

@@ -1,4 +1,5 @@
 import {
+  Ban,
   Banknote,
   Bike,
   CircleX,
@@ -61,7 +62,9 @@ const paymentBadges: Record<PaymentStatus, { label: string; icon: LucideIcon; to
 };
 
 /** Payment Status (997:188), 1:1 with the escrow state machine. */
-export function PaymentStatusBadge({ status, method }: { status: PaymentStatus; method?: Order['method'] }) {
+export function PaymentStatusBadge({ status, method, cancellation }: { status: PaymentStatus; method?: Order['method']; cancellation?: Order['cancellation'] }) {
+  // D19: a cancelled order says so first; the refund state is detailed on the order.
+  if (cancellation) return <Badge label={cancellation.refund === 'sent' ? 'Annulée · remboursement en cours' : 'Annulée'} icon={Ban} tone="neutral" />;
   if (status === 'pending' && method === 'cash') return <Badge label="Paiement à la livraison" icon={Banknote} tone="neutral" />;
   const b = paymentBadges[status];
   return <Badge label={b.label} icon={b.icon} tone={b.tone} />;

@@ -1,6 +1,6 @@
 import { demoCourier } from './catalog';
 import { pickupCodeFor } from './seller';
-import type { Courier, IncidentReason, Mission, Order, PaymentStatus } from './types';
+import type { CancelReason, Courier, IncidentReason, Mission, Order, PaymentStatus } from './types';
 
 /**
  * Authoritative order state machine (mock back-end).
@@ -23,7 +23,11 @@ export type OrderEvent =
   | { type: 'courier.confirm_delivery'; code: string; cashCollected?: boolean }
   /** L9 · Impossible de livrer. Funds stay with YA YO until it decides (new attempt, return or refund). */
   | { type: 'courier.report_incident'; reason: IncidentReason; photo: number | string }
-  | { type: 'escrow.release' };
+  | { type: 'escrow.release' }
+  /** D18 · The buyer cancels before the parcel is handed to the courier. */
+  | { type: 'buyer.cancel'; reason: CancelReason; note?: string }
+  /** D19 · The operator confirms the refund reached the buyer's account. */
+  | { type: 'refund.received' };
 
 export type OrderEventType = OrderEvent['type'];
 
@@ -55,8 +59,45 @@ function paymentSecured(order: Order): boolean {
   return order.payment === 'held_in_escrow';
 }
 
+/**
+ * D18 rule: the buyer may cancel a paid order (or a confirmed cash order) as long
+ * as the seller has not handed the parcel to the courier. After that, only a
+ * dispute (D4) is possible.
+ */
+export function canCancel(order: Order): boolean {
+  if (order.cancellation || order.incident) return false;
+  const paid = order.method === 'cash' ? order.payment === 'pending' : order.payment === 'held_in_escrow';
+  // The courier may already be on the way to the shop (picking_up): the mission is withdrawn.
+  return paid && order.seller !== 'handed_over' && ['unassigned', 'assigned', 'picking_up'].includes(order.delivery);
+}
+
 export function applyOrderEvent(order: Order, event: OrderEvent, at: string): Transition {
+  // A cancelled order is frozen: only the refund confirmation still applies.
+  if (order.cancellation && event.type !== 'refund.received') return fail('INVALID_TRANSITION', 'Cette commande a été annulée par l’acheteur.');
   switch (event.type) {
+    case 'buyer.cancel': {
+      if (!canCancel(order))
+        return fail('INVALID_TRANSITION', 'Le colis est déjà parti chez le livreur : signale plutôt un problème à la réception.');
+      const prepaid = order.method !== 'cash';
+      return {
+        ok: true,
+        order: {
+          ...order,
+          payment: prepaid ? 'refunded' : 'failed',
+          // The mission proposed to a courier is withdrawn.
+          delivery: 'unassigned',
+          courier: undefined,
+          mission: undefined,
+          cancellation: { reason: event.reason, note: event.note?.trim() || undefined, at, refund: prepaid ? 'sent' : 'none' },
+          milestones: { ...order.milestones, cancelledAt: at },
+        },
+      };
+    }
+    case 'refund.received': {
+      const c = order.cancellation;
+      if (!c || c.refund !== 'sent') return fail('INVALID_TRANSITION', 'Aucun remboursement en cours.');
+      return { ok: true, order: { ...order, cancellation: { ...c, refund: 'received', refundedAt: at } } };
+    }
     case 'seller.start_preparing': {
       if (order.seller !== 'new') return fail('INVALID_TRANSITION', 'La commande est déjà en préparation.');
       if (!paymentSecured(order))

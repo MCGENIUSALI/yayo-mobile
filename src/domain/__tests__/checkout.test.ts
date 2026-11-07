@@ -1,4 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
+import { DEMO_PHONE_EXISTING } from '../auth';
 import { formatFC, formatUSD } from '../money';
 import { detectOperator, formatLocalMsisdn } from '../paymentProvider';
 import { applyOrderEvent, nextRoleEvents } from '../orderMachine';
@@ -8,6 +9,14 @@ import { confirmedOrders, createInitialState, reducer, type Action, type AppStat
 
 const T0 = '2026-11-02T10:00:00.000Z';
 const at = (s: number) => new Date(new Date(T0).getTime() + s * 1000).toISOString();
+
+/** Jean Mukendi, signed in just before T0 (buying needs an account since A9). */
+function buyer(): AppState {
+  const t = (s: number) => new Date(new Date(T0).getTime() + s * 1000).toISOString();
+  let s = reducer(createInitialState(T0), { type: 'auth/onboarded' });
+  s = reducer(s, { type: 'auth/requestCode', kind: 'phone', target: DEMO_PHONE_EXISTING, channel: 'sms', code: '123456', at: t(-20) });
+  return reducer(s, { type: 'auth/verifyCode', code: '123456', at: t(-15) });
+}
 
 function run(state: AppState, ...actions: Action[]): AppState {
   return actions.reduce(reducer, state);
@@ -23,7 +32,7 @@ describe('money', () => {
 
 describe('pricing', () => {
   it('reproduces the C1 cart: 3 items, 2 sellers, YAYO10', () => {
-    const s = createInitialState(T0);
+    const s = buyer();
     const sum = summarizeCart(s.cart, s.promoCode);
     expect(sum.groups.map((g) => g.shop.name)).toEqual(['JBL Store Kin', 'Audio Plus Gombe']);
     expect(sum.itemsTotal).toBe(530_000);
@@ -40,7 +49,7 @@ describe('pricing', () => {
 
 describe('checkout → escrow', () => {
   it('creates one order per seller whose totals add up to the amount paid', () => {
-    const s = run(createInitialState(T0), { type: 'checkout/pay', at: at(0) });
+    const s = run(buyer(), { type: 'checkout/pay', at: at(0) });
     const ck = s.checkouts[s.activeCheckoutId!]!;
     expect(ck.status).toBe('pending');
     expect(ck.orderIds).toHaveLength(2);
@@ -50,13 +59,13 @@ describe('checkout → escrow', () => {
   });
 
   it('ignores a double tap on "Payer" while the request is pending', () => {
-    const s1 = run(createInitialState(T0), { type: 'checkout/pay', at: at(0) });
+    const s1 = run(buyer(), { type: 'checkout/pay', at: at(0) });
     const s2 = reducer(s1, { type: 'checkout/pay', at: at(1) });
     expect(s2).toBe(s1);
   });
 
   it('holds funds in escrow and empties the cart when the provider approves', () => {
-    let s = run(createInitialState(T0), { type: 'checkout/pay', at: at(0) });
+    let s = run(buyer(), { type: 'checkout/pay', at: at(0) });
     const ck = s.checkouts[s.activeCheckoutId!]!;
     s = reducer(s, { type: 'checkout/providerResult', checkoutId: ck.id, attempt: 1, outcome: 'approved', at: at(5) });
     expect(s.checkouts[ck.id]!.status).toBe('succeeded');
@@ -66,7 +75,7 @@ describe('checkout → escrow', () => {
   });
 
   it('keeps unpaid orders out of "Mes commandes" and allows a retry after failure', () => {
-    let s = run(createInitialState(T0), { type: 'checkout/pay', at: at(0) });
+    let s = run(buyer(), { type: 'checkout/pay', at: at(0) });
     const id = s.activeCheckoutId!;
     s = reducer(s, { type: 'checkout/providerResult', checkoutId: id, attempt: 1, outcome: 'insufficient_funds', at: at(3) });
     expect(s.checkouts[id]!.status).toBe('failed');
@@ -79,7 +88,7 @@ describe('checkout → escrow', () => {
   });
 
   it('ignores a stale provider callback from a previous attempt', () => {
-    let s = run(createInitialState(T0), { type: 'checkout/pay', at: at(0) });
+    let s = run(buyer(), { type: 'checkout/pay', at: at(0) });
     const id = s.activeCheckoutId!;
     s = reducer(s, { type: 'checkout/providerResult', checkoutId: id, attempt: 1, outcome: 'expired', at: at(105) });
     s = reducer(s, { type: 'checkout/pay', at: at(110) });
@@ -88,7 +97,7 @@ describe('checkout → escrow', () => {
   });
 
   it('refuses a retry after the 30 minute hold', () => {
-    let s = run(createInitialState(T0), { type: 'checkout/pay', at: at(0) });
+    let s = run(buyer(), { type: 'checkout/pay', at: at(0) });
     const id = s.activeCheckoutId!;
     s = reducer(s, { type: 'checkout/providerResult', checkoutId: id, attempt: 1, outcome: 'declined', at: at(3) });
     s = reducer(s, { type: 'checkout/pay', at: at(31 * 60) });
@@ -96,7 +105,7 @@ describe('checkout → escrow', () => {
   });
 
   it('creates a new checkout when the cart changed after a failure', () => {
-    let s = run(createInitialState(T0), { type: 'checkout/pay', at: at(0) });
+    let s = run(buyer(), { type: 'checkout/pay', at: at(0) });
     const first = s.activeCheckoutId!;
     s = reducer(s, { type: 'checkout/providerResult', checkoutId: first, attempt: 1, outcome: 'declined', at: at(3) });
     s = reducer(s, { type: 'cart/remove', productId: 'jbl-tune-510', color: 'Noir', at: at(4) });
@@ -106,7 +115,7 @@ describe('checkout → escrow', () => {
   });
 
   it('confirms cash on delivery immediately without holding funds', () => {
-    let s = createInitialState(T0);
+    let s = buyer();
     s = run(s, { type: 'draft/update', patch: { method: 'cash' } }, { type: 'checkout/pay', at: at(0) });
     const ck = s.checkouts[s.activeCheckoutId!]!;
     expect(ck.status).toBe('succeeded');
@@ -114,7 +123,7 @@ describe('checkout → escrow', () => {
   });
 
   it('rejects an invalid Mobile Money number', () => {
-    let s = createInitialState(T0);
+    let s = buyer();
     s = run(s, { type: 'draft/update', patch: { msisdn: '81 23' } }, { type: 'checkout/pay', at: at(0) });
     expect(s.lastError?.code).toBe('INVALID_MSISDN');
     expect(s.activeCheckoutId).toBeUndefined();
@@ -123,7 +132,7 @@ describe('checkout → escrow', () => {
 
 describe('order state machine (cross-role)', () => {
   function paidOrder() {
-    let s = run(createInitialState(T0), { type: 'checkout/pay', at: at(0) });
+    let s = run(buyer(), { type: 'checkout/pay', at: at(0) });
     const ck = s.checkouts[s.activeCheckoutId!]!;
     s = reducer(s, { type: 'checkout/providerResult', checkoutId: ck.id, attempt: 1, outcome: 'approved', at: at(5) });
     return { s, id: ck.orderIds[0]! };
@@ -152,7 +161,7 @@ describe('order state machine (cross-role)', () => {
   });
 
   it('never lets a seller prepare an unpaid order', () => {
-    let s = run(createInitialState(T0), { type: 'checkout/pay', at: at(0) });
+    let s = run(buyer(), { type: 'checkout/pay', at: at(0) });
     const id = s.checkouts[s.activeCheckoutId!]!.orderIds[0]!;
     const r = applyOrderEvent(s.orders[id]!, { type: 'seller.start_preparing' }, at(1));
     expect(r.ok).toBe(false);
@@ -165,7 +174,7 @@ describe('order state machine (cross-role)', () => {
   });
 
   it('requires the cash to be collected for cash-on-delivery orders', () => {
-    let s = run(createInitialState(T0), { type: 'draft/update', patch: { method: 'cash' } }, { type: 'checkout/pay', at: at(0) });
+    let s = run(buyer(), { type: 'draft/update', patch: { method: 'cash' } }, { type: 'checkout/pay', at: at(0) });
     const id = s.checkouts[s.activeCheckoutId!]!.orderIds[0]!;
     for (const event of [
       { type: 'seller.start_preparing' },
@@ -191,13 +200,13 @@ describe('order state machine (cross-role)', () => {
 
 describe('cart', () => {
   it('limits quantities to the stock', () => {
-    const s = reducer(createInitialState(T0), { type: 'cart/setQty', productId: 'jbl-charge-5', color: 'Bleu', qty: 7, at: T0 });
+    const s = reducer(buyer(), { type: 'cart/setQty', productId: 'jbl-charge-5', color: 'Bleu', qty: 7, at: T0 });
     expect(s.lastError?.code).toBe('STOCK_LIMIT');
     expect(s.cart.find((l) => l.productId === 'jbl-charge-5')!.qty).toBe(1);
   });
 
   it('refuses an out-of-stock product', () => {
-    const s = reducer(createInitialState(T0), { type: 'cart/add', productId: 'earbuds-pro', color: 'Orange', qty: 1, at: T0 });
+    const s = reducer(buyer(), { type: 'cart/add', productId: 'earbuds-pro', color: 'Orange', qty: 1, at: T0 });
     expect(s.lastError?.code).toBe('OUT_OF_STOCK');
   });
 });
@@ -208,7 +217,7 @@ describe('mobile money number', () => {
     expect(detectOperator('85 000 0000')).toBe('Orange Money');
     expect(detectOperator('99 876 5432')).toBe('Airtel Money');
     expect(formatLocalMsisdn('812345678')).toBe('81 234 5678');
-    const s = run(createInitialState(T0), { type: 'draft/update', patch: { msisdn: '71 234 5678' } }, { type: 'checkout/pay', at: at(0) });
+    const s = run(buyer(), { type: 'draft/update', patch: { msisdn: '71 234 5678' } }, { type: 'checkout/pay', at: at(0) });
     expect(s.lastError?.code).toBe('UNKNOWN_OPERATOR');
   });
 });

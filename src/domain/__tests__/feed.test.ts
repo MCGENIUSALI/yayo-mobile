@@ -1,9 +1,18 @@
 import { describe, expect, it } from '@jest/globals';
+import { DEMO_PHONE_EXISTING } from '../auth';
 import { getProduct, getShop } from '../catalog';
 import { followingFeed, formatCount, posts, videoPosts } from '../feed';
 import { createInitialState, reducer, socialCount, type Action, type AppState } from '../state';
 
 const T0 = '2026-11-02T10:00:00.000Z';
+/** Jean Mukendi, signed in just before T0 (buying needs an account since A9). */
+function buyer(): AppState {
+  const t = (s: number) => new Date(new Date(T0).getTime() + s * 1000).toISOString();
+  let s = reducer(createInitialState(T0), { type: 'auth/onboarded' });
+  s = reducer(s, { type: 'auth/requestCode', kind: 'phone', target: DEMO_PHONE_EXISTING, channel: 'sms', code: '123456', at: t(-20) });
+  return reducer(s, { type: 'auth/verifyCode', code: '123456', at: t(-15) });
+}
+
 const run = (s: AppState, ...a: Action[]) => a.reduce(reducer, s);
 const toggle = (list: 'liked' | 'saved' | 'reposted' | 'following', id: string): Action => ({ type: 'social/toggle', list, id, at: T0 });
 
@@ -29,7 +38,7 @@ describe('feed content', () => {
 
 describe('social state', () => {
   it('toggles like on and off, and the count follows', () => {
-    const s0 = createInitialState(T0);
+    const s0 = buyer();
     const post = posts[0]!;
     const s1 = run(s0, toggle('liked', post.id));
     expect(s1.social.liked).toEqual([post.id]);
@@ -40,7 +49,7 @@ describe('social state', () => {
   });
 
   it('keeps lists independent and logs buyer events', () => {
-    const s = run(createInitialState(T0), toggle('saved', 'P-go3'), toggle('reposted', 'P-go3'));
+    const s = run(buyer(), toggle('saved', 'P-go3'), toggle('reposted', 'P-go3'));
     expect(s.social.saved).toEqual(['P-go3']);
     expect(s.social.reposted).toEqual(['P-go3']);
     expect(s.social.liked).toEqual([]);
@@ -48,7 +57,7 @@ describe('social state', () => {
   });
 
   it('builds the Abonnements tab from followed shops, newest first', () => {
-    const s0 = createInitialState(T0);
+    const s0 = buyer();
     expect(followingFeed(videoPosts, s0.social.following)).toEqual([]);
     const s1 = run(s0, toggle('following', 'audio-plus-gombe'), toggle('following', 'bilokos2kin'));
     expect(followingFeed(videoPosts, s1.social.following).map((p) => p.id)).toEqual(['P-pulse', 'P-tune']);
@@ -57,7 +66,7 @@ describe('social state', () => {
   });
 
   it('quick buy from a video goes through the same stock rules as the product page', () => {
-    const s0 = createInitialState(T0);
+    const s0 = buyer();
     const s1 = run(s0, { type: 'cart/add', productId: 'jbl-pulse-5', color: 'Noir', qty: 2, at: T0 });
     expect(s1.cart.find((l) => l.productId === 'jbl-pulse-5')?.qty).toBe(2);
     const s2 = run(s1, { type: 'cart/add', productId: 'jbl-pulse-5', color: 'Noir', qty: 8, at: T0 });
