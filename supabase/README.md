@@ -22,7 +22,7 @@ Règles chiffrées (fonction `rules()`) : livraison 5 000 FC par vendeur, commis
    ```bash
    npx supabase login
    npx supabase link --project-ref <ref du projet>
-   npx supabase db push
+   npx supabase db push --remote
    ```
 3. **Authentication → Providers → Phone** : active-le et branche un fournisseur de SMS (Twilio, Vonage, MessageBird ou Textlocal). Vérifie qu'il livre en RDC avant d'ouvrir l'app.
 4. **Database → Extensions** : active `pg_cron`, puis dans l'éditeur SQL :
