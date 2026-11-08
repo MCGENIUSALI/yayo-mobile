@@ -2,12 +2,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useState, type ReactNode } from 'react';
 import { AppState as RNAppState } from 'react-native';
 import { decidePayment } from '@/domain/paymentProvider';
-import { createInitialState, reducer, STATE_VERSION, type Action, type AppState } from '@/domain/state';
+import { supabase } from '@/lib/supabase';
+import { loadAccount, signOutServer } from './serverAuth';
+import { createInitialState, reducer, restoreState, type Action, type AppState } from '@/domain/state';
 
 const STORAGE_KEY = 'yayo/demo-state';
 
-/** Actions as dispatched by screens: the store stamps the time. */
-type Timed<A> = A extends { at: string } ? Omit<A, 'at'> : A;
+/** Actions as dispatched by screens: the store stamps the time unless one is given. */
+type Timed<A> = A extends { at: string } ? Omit<A, 'at'> & { at?: string } : A;
 export type StoreAction = Timed<Action>;
 
 interface Store {
@@ -26,8 +28,7 @@ export function AppStoreProvider({ children, fallback }: { children: ReactNode; 
     let cancelled = false;
     AsyncStorage.getItem(STORAGE_KEY)
       .then((raw) => {
-        const parsed = raw ? (JSON.parse(raw) as AppState) : null;
-        const initial = parsed?.version === STATE_VERSION ? { ...parsed, lastError: undefined } : createInitialState(new Date().toISOString());
+        const initial = restoreState(raw ? JSON.parse(raw) : null, new Date().toISOString());
         if (!cancelled) setBoot({ phase: 'ready', initial });
       })
       .catch(() => {
@@ -46,11 +47,20 @@ function StoreRuntime({ initial, children }: { initial: AppState; children: Reac
   const [state, rawDispatch] = useReducer(reducer, initial);
 
   const dispatch = useCallback((action: StoreAction) => {
-    rawDispatch({ ...action, at: new Date().toISOString() } as Action);
+    // Server mode: leaving the app also closes the Supabase session.
+    if (action.type === 'auth/signOut' && supabase) {
+      signingOut = true;
+      void signOutServer();
+    }
+    rawDispatch({ ...action, at: (action as { at?: string }).at ?? new Date().toISOString() } as Action);
   }, []);
 
   usePersistence(state);
+  useSessionCheck(rawDispatch);
+  useServerSession(rawDispatch);
   usePaymentProvider(state, rawDispatch);
+  useRefundProvider(state, rawDispatch);
+  useSupportAgent(state, rawDispatch);
 
   const value = useMemo(() => ({ state, dispatch }), [state, dispatch]);
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
@@ -112,6 +122,87 @@ function usePaymentProvider(state: AppState, dispatch: (a: Action) => void) {
     // pendingKey captures id + attempt + status; the reducer also drops stale results.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingKey, foregroundTick, dispatch]);
+}
+
+/** Simulated operator: a refund sent by YA YO (D19) reaches the buyer's account a few seconds later. */
+export const DEMO_REFUND_DELAY_MS = 6_000;
+
+function useRefundProvider(state: AppState, dispatch: (a: Action) => void) {
+  const pending = Object.values(state.orders)
+    .filter((o) => o.cancellation?.refund === 'sent')
+    .map((o) => `${o.id}@${o.cancellation!.at}`)
+    .join(',');
+  useEffect(() => {
+    if (!pending) return;
+    const timers = pending.split(',').map((key) => {
+      const [orderId = '', at = ''] = key.split('@');
+      const dueIn = new Date(at).getTime() + DEMO_REFUND_DELAY_MS - Date.now();
+      return setTimeout(() => dispatch({ type: 'order/refundReceived', orderId, at: new Date().toISOString() }), Math.max(0, dueIn));
+    });
+    return () => timers.forEach(clearTimeout);
+  }, [pending, dispatch]);
+}
+
+/** Demo only: the support agent acknowledges each new message (D17). A real agent answers from the support back-office. */
+function useSupportAgent(state: AppState, dispatch: (a: Action) => void) {
+  const me = state.auth.session?.accountId;
+  const thread = me ? state.support[me] : undefined;
+  const last = thread?.at(-1);
+  const waiting = last?.from === 'me' ? last.id : null;
+  useEffect(() => {
+    if (!waiting) return;
+    const t = setTimeout(
+      () =>
+        dispatch({
+          type: 'support/agentReply',
+          text: 'Bien reçu, merci. Je regarde ta demande et je te réponds ici. Tu recevras aussi une notification.',
+          at: new Date().toISOString(),
+        }),
+      2_500,
+    );
+    return () => clearTimeout(t);
+  }, [waiting, dispatch]);
+}
+
+/**
+ * Server mode: at launch, a Supabase session still open (app reinstalled, local
+ * state cleared) signs the account back in; a session ended by the server
+ * (refresh refused, account deleted) closes the local one.
+ */
+let signingOut = false;
+
+function useServerSession(dispatch: (a: Action) => void) {
+  useEffect(() => {
+    if (!supabase) return;
+    let cancelled = false;
+    void supabase.auth.getSession().then(async ({ data }) => {
+      const userId = data.session?.user.id;
+      if (cancelled || !userId) return;
+      const account = await loadAccount(userId).catch(() => null);
+      if (!cancelled && account) dispatch({ type: 'auth/serverRestored', account, at: new Date().toISOString() });
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event !== 'SIGNED_OUT') return;
+      // Asked by the user: already handled. Otherwise the server ended the session.
+      if (signingOut) signingOut = false;
+      else dispatch({ type: 'auth/signOut', reason: 'expired' });
+    });
+    return () => {
+      cancelled = true;
+      sub.subscription.unsubscribe();
+    };
+  }, [dispatch]);
+}
+
+/** Re-checks the session (idle/absolute expiry, suspension) at launch and on each return to the foreground. */
+function useSessionCheck(dispatch: (a: Action) => void) {
+  useEffect(() => {
+    dispatch({ type: 'auth/touch', at: new Date().toISOString() });
+    const sub = RNAppState.addEventListener('change', (s) => {
+      if (s === 'active') dispatch({ type: 'auth/touch', at: new Date().toISOString() });
+    });
+    return () => sub.remove();
+  }, [dispatch]);
 }
 
 export function useStore(): Store {

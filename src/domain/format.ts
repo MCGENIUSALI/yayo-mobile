@@ -34,3 +34,13 @@ export function plural(n: number, one: string, many: string) {
 export function formatMsisdn(local: string) {
   return `+243 ${local.trim()}`;
 }
+
+/** Short age, as on SC4: « 5 min », « 2 h », « 3 j ». */
+export function formatAgo(iso: string, now = new Date()): string {
+  const min = Math.max(0, Math.floor((now.getTime() - new Date(iso).getTime()) / 60_000));
+  if (min < 1) return 'à l’instant';
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h} h`;
+  return `${Math.floor(h / 24)} j`;
+}
