@@ -51,6 +51,8 @@ export interface OtpChallenge {
   lockedUntil?: string;
   /** "delete": the code confirms the account deletion (D11), it never signs in. */
   purpose?: 'signin' | 'delete';
+  /** Sent by the YA YO server (Supabase): the app never knows the code. */
+  server?: boolean;
 }
 
 export interface Session {
@@ -65,7 +67,7 @@ export interface AuthState {
   accounts: Record<string, Account>;
   challenge?: OtpChallenge;
   /** Identity proven by OTP but no account yet (A7). */
-  signup?: { kind: IdentifierKind; target: string; verifiedAt: string };
+  signup?: { kind: IdentifierKind; target: string; verifiedAt: string; userId?: string };
   session?: Session;
   /** A8 still to answer after creating the account. */
   needsRoleChoice: boolean;
@@ -275,7 +277,17 @@ export type AuthAction =
   /** Demo only: plays the YA YO team validating a pending role. */
   | { type: 'auth/demoGrantRole'; role: 'seller' | 'courier'; at: string }
   /** D11: the code sent to the signed-in account confirms the deletion. Blockers (D10) are checked by the app state first. */
-  | { type: 'auth/deleteAccount'; code: string; at: string };
+  | { type: 'auth/deleteAccount'; code: string; at: string }
+  /* ---- Server mode (Supabase): the server sends and checks the code, the app records the outcome. ---- */
+  | { type: 'auth/serverCodeSent'; kind: IdentifierKind; target: string; channel: OtpChannel; at: string }
+  /** The server refused the code: the screen counts the attempt like in the demo (E8). */
+  | { type: 'auth/serverWrongCode'; at: string }
+  /** Code accepted. `account` is null for a new account (A7 follows). */
+  | { type: 'auth/serverVerified'; userId: string; account: Account | null; at: string }
+  /** A7 saved on the server. */
+  | { type: 'auth/serverProfileSaved'; account: Account; at: string }
+  /** A session kept by the server (app reopened): the account is loaded again. */
+  | { type: 'auth/serverRestored'; account: Account; at: string };
 
 export type AuthResult = { ok: true; auth: AuthState; event?: string } | { ok: false; code: string; message: string; auth?: AuthState };
 
@@ -336,7 +348,7 @@ export function authReduce(auth: AuthState, a: AuthAction): AuthResult {
 
     case 'auth/verifyCode': {
       const c = auth.challenge;
-      if (!c || c.purpose === 'delete') return fail('NO_CHALLENGE', 'Demande d’abord un code.');
+      if (!c || c.purpose === 'delete' || c.server) return fail('NO_CHALLENGE', 'Demande d’abord un code.');
       const bad = checkCode(auth, c, a.code, a.at);
       if (bad) return bad;
       // Code consumed: single use.
@@ -345,6 +357,57 @@ export function authReduce(auth: AuthState, a: AuthAction): AuthResult {
       if (!account) return ok({ ...base, signup: { kind: c.kind, target: c.target, verifiedAt: a.at } }, 'auth.otp.verified.new');
       if (account.status === 'suspended') return ok({ ...base, blocked: { accountId: account.id, at: a.at } }, 'auth.login.suspended');
       return ok(startSession(base, account.id, a.at), 'auth.login');
+    }
+
+    case 'auth/serverCodeSent': {
+      const target = a.kind === 'phone' ? normalizePhone(a.target) : normalizeEmail(a.target);
+      if (!target) return fail('INVALID_TARGET', a.kind === 'phone' ? 'Ce numéro n’est pas un numéro mobile congolais.' : 'Cette adresse e-mail n’est pas valide.');
+      const prev = auth.challenge?.target === target ? auth.challenge : undefined;
+      const sends = (prev?.sends ?? []).filter((t) => ms(a.at) - ms(t) < 3_600_000);
+      const challenge: OtpChallenge = {
+        kind: a.kind,
+        target,
+        channel: a.channel,
+        code: '',
+        sentAt: a.at,
+        expiresAt: addMs(a.at, OTP_TTL_MS),
+        attemptsLeft: OTP_MAX_ATTEMPTS,
+        sends: [...sends, a.at],
+        purpose: 'signin',
+        server: true,
+      };
+      return ok({ ...auth, challenge, signup: undefined, blocked: undefined, signedOutReason: undefined }, `auth.otp.sent.${a.channel}`);
+    }
+
+    case 'auth/serverWrongCode': {
+      const c = auth.challenge;
+      if (!c?.server) return fail('NO_CHALLENGE', 'Demande d’abord un code.');
+      return checkCode(auth, c, '\u0000', a.at) ?? ok(auth);
+    }
+
+    case 'auth/serverVerified': {
+      const c = auth.challenge;
+      const base: AuthState = { ...auth, challenge: undefined };
+      if (!a.account) {
+        if (!c) return fail('NO_CHALLENGE', 'Demande d’abord un code.');
+        return ok({ ...base, signup: { kind: c.kind, target: c.target, verifiedAt: a.at, userId: a.userId } }, 'auth.otp.verified.new');
+      }
+      const accounts = { ...auth.accounts, [a.account.id]: a.account };
+      if (a.account.status === 'suspended') return ok({ ...base, accounts, blocked: { accountId: a.account.id, at: a.at } }, 'auth.login.suspended');
+      return ok(startSession({ ...base, accounts }, a.account.id, a.at), 'auth.login');
+    }
+
+    case 'auth/serverProfileSaved': {
+      if (!auth.signup?.userId || auth.signup.userId !== a.account.id) return fail('NOT_VERIFIED', 'Vérifie d’abord ton numéro.');
+      const next = startSession({ ...auth, signup: undefined, accounts: { ...auth.accounts, [a.account.id]: a.account } }, a.account.id, a.at);
+      return ok({ ...next, needsRoleChoice: true }, 'auth.account.created');
+    }
+
+    case 'auth/serverRestored': {
+      const accounts = { ...auth.accounts, [a.account.id]: a.account };
+      if (a.account.status === 'suspended') return ok({ ...auth, accounts, session: undefined, signedOutReason: 'suspended' }, 'auth.session.refused');
+      if (auth.session?.accountId === a.account.id) return ok({ ...auth, accounts });
+      return ok(startSession({ ...auth, accounts, onboardingDone: true }, a.account.id, a.at), 'auth.login');
     }
 
     case 'auth/cancelChallenge':

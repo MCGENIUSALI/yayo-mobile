@@ -2,6 +2,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useState, type ReactNode } from 'react';
 import { AppState as RNAppState } from 'react-native';
 import { decidePayment } from '@/domain/paymentProvider';
+import { supabase } from '@/lib/supabase';
+import { loadAccount, signOutServer } from './serverAuth';
 import { createInitialState, reducer, restoreState, type Action, type AppState } from '@/domain/state';
 
 const STORAGE_KEY = 'yayo/demo-state';
@@ -45,11 +47,17 @@ function StoreRuntime({ initial, children }: { initial: AppState; children: Reac
   const [state, rawDispatch] = useReducer(reducer, initial);
 
   const dispatch = useCallback((action: StoreAction) => {
+    // Server mode: leaving the app also closes the Supabase session.
+    if (action.type === 'auth/signOut' && supabase) {
+      signingOut = true;
+      void signOutServer();
+    }
     rawDispatch({ ...action, at: (action as { at?: string }).at ?? new Date().toISOString() } as Action);
   }, []);
 
   usePersistence(state);
   useSessionCheck(rawDispatch);
+  useServerSession(rawDispatch);
   usePaymentProvider(state, rawDispatch);
   useRefundProvider(state, rawDispatch);
   useSupportAgent(state, rawDispatch);
@@ -154,6 +162,36 @@ function useSupportAgent(state: AppState, dispatch: (a: Action) => void) {
     );
     return () => clearTimeout(t);
   }, [waiting, dispatch]);
+}
+
+/**
+ * Server mode: at launch, a Supabase session still open (app reinstalled, local
+ * state cleared) signs the account back in; a session ended by the server
+ * (refresh refused, account deleted) closes the local one.
+ */
+let signingOut = false;
+
+function useServerSession(dispatch: (a: Action) => void) {
+  useEffect(() => {
+    if (!supabase) return;
+    let cancelled = false;
+    void supabase.auth.getSession().then(async ({ data }) => {
+      const userId = data.session?.user.id;
+      if (cancelled || !userId) return;
+      const account = await loadAccount(userId).catch(() => null);
+      if (!cancelled && account) dispatch({ type: 'auth/serverRestored', account, at: new Date().toISOString() });
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event !== 'SIGNED_OUT') return;
+      // Asked by the user: already handled. Otherwise the server ended the session.
+      if (signingOut) signingOut = false;
+      else dispatch({ type: 'auth/signOut', reason: 'expired' });
+    });
+    return () => {
+      cancelled = true;
+      sub.subscription.unsubscribe();
+    };
+  }, [dispatch]);
 }
 
 /** Re-checks the session (idle/absolute expiry, suspension) at launch and on each return to the foreground. */

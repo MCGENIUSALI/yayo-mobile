@@ -2,10 +2,12 @@ import { router } from 'expo-router';
 import { Globe, X } from 'lucide-react-native';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { authReduce, emailError, normalizeEmail, normalizePhone, phoneError, type IdentifierKind } from '@/domain/auth';
+import { authReduce, emailError, normalizeEmail, normalizePhone, phoneError, resendWaitSeconds, type IdentifierKind } from '@/domain/auth';
 import { formatLocalMsisdn } from '@/domain/paymentProvider';
 import { useStore } from '@/store/AppStore';
+import { isServerMode } from '@/lib/supabase';
 import { demoOtpCode } from '@/store/otpProvider';
+import { sendCode } from '@/store/serverAuth';
 import { color, space } from '@/theme/tokens';
 import { Logo, OrDivider } from '@/ui/Auth';
 import { Button } from '@/ui/Button';
@@ -38,7 +40,28 @@ export default function SignIn() {
     }
     const target = kind === 'phone' ? normalizePhone(phone)! : normalizeEmail(email)!;
     const at = new Date().toISOString();
-    const action = { type: 'auth/requestCode' as const, kind, target, channel: kind === 'phone' ? ('sms' as const) : ('email' as const), code: demoOtpCode(), at };
+    const channel = kind === 'phone' ? ('sms' as const) : ('email' as const);
+    if (isServerMode()) {
+      // A code already sent to this identity is still valid: go back to it instead of sending another.
+      const c = state.auth.challenge;
+      if (c?.server && c.target === target && resendWaitSeconds(c, at) > 0) {
+        router.push('/auth/code');
+        return;
+      }
+      setSending(true);
+      void sendCode(kind, target, channel).then((r) => {
+        setSending(false);
+        if (!r.ok) {
+          haptic('warning');
+          toast(r.message, 'danger');
+          return;
+        }
+        dispatch({ type: 'auth/serverCodeSent', kind, target, channel, at: new Date().toISOString() });
+        router.push('/auth/code');
+      });
+      return;
+    }
+    const action = { type: 'auth/requestCode' as const, kind, target, channel, code: demoOtpCode(), at };
     const r = authReduce(state.auth, action);
     if (!r.ok) {
       // A code already sent to this identity is still valid: go back to it instead of failing.

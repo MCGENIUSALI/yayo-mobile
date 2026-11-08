@@ -109,4 +109,13 @@ Historique : ce code vient du dossier `mobile/` de [yayo-dashboard](https://gith
 
 ## Serveur Supabase (en cours)
 
-La base, ses règles d'accès et les règles des commandes sont dans `supabase/` : voir [supabase/README.md](supabase/README.md). Tests : `bash supabase/tests/run.sh` (PostgreSQL local requis). Le client est dans `src/lib/supabase.ts` ; tant que `EXPO_PUBLIC_SUPABASE_URL` n'est pas défini, l'app reste en mode démo. Aucun écran n'appelle encore Supabase.
+La base, ses règles d'accès et les règles des commandes sont dans `supabase/` : voir [supabase/README.md](supabase/README.md). Tests : `bash supabase/tests/run.sh` (PostgreSQL local requis).
+
+Pour utiliser le serveur : `cp .env.example .env.local`, puis `npm run mobile`. Sans `.env.local`, tout reste en mode démo.
+
+Ce qui passe par le serveur en mode serveur :
+- **Connexion** (A5, A6, E8, E9) : Supabase envoie et vérifie le code, par e-mail, et par SMS une fois un fournisseur de SMS branché. L'app n'affiche plus le code de démo ni l'appel vocal.
+- **Création du profil** (A7) : nom, ville et commune enregistrés dans `profiles` ; un e-mail facultatif est confirmé par lien avant d'être lié.
+- **Session** gardée par Supabase et retrouvée au relancement ; la déconnexion ferme les deux.
+
+Tout le reste (catalogue, panier, paiement, vendeur, livreur, fil) reste en démo pour l'instant. En mode serveur, les comptes de démo (81 234 5678…) ne servent plus : on se connecte avec son vrai numéro ou son e-mail. La suppression de compte n'est pas encore ouverte côté serveur.

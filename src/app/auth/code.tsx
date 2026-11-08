@@ -5,6 +5,7 @@ import { StyleSheet, View } from 'react-native';
 import { authReduce, displayTarget, lockMinutesLeft, OTP_LENGTH, OTP_RESEND_AFTER_MS, type OtpChannel } from '@/domain/auth';
 import { useStore } from '@/store/AppStore';
 import { demoOtpCode } from '@/store/otpProvider';
+import { sendCode, verifyCode } from '@/store/serverAuth';
 import { pressScale } from '@/theme/motion';
 import { color, radius, space } from '@/theme/tokens';
 import { OtpInput } from '@/ui/Auth';
@@ -43,8 +44,36 @@ export default function CodeScreen() {
   const error = feedback && feedback.code !== 'RESENT';
   const canResend = (!locked && resend.ms === 0) || lockEnded;
 
+  const verifyOnServer = (value: string) => {
+    setBusy(true);
+    void verifyCode(c.kind, c.target, value).then((r) => {
+      setBusy(false);
+      const at = new Date().toISOString();
+      if (!r.ok) {
+        haptic('warning');
+        if (r.code === 'WRONG_CODE') {
+          // Same attempt counter and 15-minute lock as the demo (E8).
+          const counted = authReduce(state.auth, { type: 'auth/serverWrongCode', at });
+          dispatch({ type: 'auth/serverWrongCode', at });
+          setFeedback({ code: counted.ok ? 'WRONG_CODE' : counted.code, message: counted.ok ? r.message : counted.message });
+        } else {
+          setFeedback({ code: r.code, message: r.message });
+        }
+        return;
+      }
+      haptic('success');
+      dispatch({ type: 'auth/serverVerified', userId: r.userId, account: r.account, at });
+      if (!r.account) router.replace('/auth/profil');
+      // Signed in or blocked: the root navigator switches screens by itself.
+    });
+  };
+
   const verify = (value: string) => {
     if (busy || value.length !== OTP_LENGTH || locked) return;
+    if (c.server) {
+      verifyOnServer(value);
+      return;
+    }
     const action = { type: 'auth/verifyCode' as const, code: value, at: new Date().toISOString() };
     const r = authReduce(state.auth, action);
     setBusy(true);
@@ -64,6 +93,22 @@ export default function CodeScreen() {
   };
 
   const sendAgain = (channel: OtpChannel) => {
+    if (c.server) {
+      setBusy(true);
+      void sendCode(c.kind, c.target, channel).then((r) => {
+        setBusy(false);
+        if (!r.ok) {
+          haptic('warning');
+          toast(r.message, 'danger');
+          return;
+        }
+        dispatch({ type: 'auth/serverCodeSent', kind: c.kind, target: c.target, channel, at: new Date().toISOString() });
+        setCode('');
+        setFeedback({ code: 'RESENT', message: '' });
+        toast('Nouveau code envoyé.', 'success');
+      });
+      return;
+    }
     const action = { type: 'auth/requestCode' as const, kind: c.kind, target: c.target, channel, code: demoOtpCode(), at: new Date().toISOString() };
     const r = authReduce(state.auth, action);
     if (!r.ok) {
@@ -145,17 +190,19 @@ export default function CodeScreen() {
             <Alert
               tone="info"
               title="Code non reçu ?"
-              body={c.kind === 'phone' ? 'Vérifie ton réseau. Tu pourras demander un nouveau code ou un appel vocal.' : 'Regarde dans tes courriers indésirables. Tu pourras demander un nouveau code.'}
+              body={c.kind === 'phone' ? (c.server ? 'Vérifie ton réseau. Tu pourras demander un nouveau code.' : 'Vérifie ton réseau. Tu pourras demander un nouveau code ou un appel vocal.') : 'Regarde dans tes courriers indésirables. Tu pourras demander un nouveau code.'}
             />
           </>
         )}
 
+        {c.server ? null : (
         <View style={styles.demo} accessibilityLabel={`Mode démo. Ton code est ${c.code.split('').join(' ')}`}>
           <Text variant="caption" color={color.text.secondary}>
             MODE DÉMO · AUCUN MESSAGE N’EST ENVOYÉ
           </Text>
           <Text variant="labelL">Ton code : {c.code}</Text>
         </View>
+        )}
       </Content>
 
       <BottomBar>
@@ -168,7 +215,7 @@ export default function CodeScreen() {
               onPress={() => sendAgain(c.kind === 'phone' ? 'sms' : 'email')}
               fill
             />
-            {c.kind === 'phone' ? (
+            {c.kind === 'phone' && !c.server ? (
               <Button label="Recevoir le code par appel" variant="ghost" leadingIcon={Phone} disabled={!canResend} onPress={() => sendAgain('call')} fill />
             ) : null}
           </>

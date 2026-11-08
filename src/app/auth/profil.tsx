@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { authReduce, CITIES, displayTarget, initialsOf, profileError } from '@/domain/auth';
 import { useStore } from '@/store/AppStore';
+import { saveProfile } from '@/store/serverAuth';
 import { color, space } from '@/theme/tokens';
 import { Checkbox, SelectField, StepLabel } from '@/ui/Auth';
 import { Button } from '@/ui/Button';
@@ -24,6 +25,7 @@ export default function CreateProfile() {
   const [email, setEmail] = useState('');
   const [terms, setTerms] = useState(false);
   const [touched, setTouched] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   if (!signup) {
     if (state.auth.session) return null;
@@ -38,6 +40,23 @@ export default function CreateProfile() {
     if (error) {
       haptic('warning');
       toast(error, 'danger');
+      return;
+    }
+    if (signup.userId) {
+      // Server mode: the profile is saved in Supabase, then the session opens.
+      if (saving) return;
+      setSaving(true);
+      void saveProfile(signup.userId, profile).then((r) => {
+        setSaving(false);
+        if (!r.ok) {
+          haptic('warning');
+          toast(r.message, 'danger');
+          return;
+        }
+        haptic('success');
+        dispatch({ type: 'auth/serverProfileSaved', account: r.account, at: new Date().toISOString() });
+        if (profile.email?.trim()) toast('On t’a envoyé un e-mail pour confirmer ton adresse.', 'success');
+      });
       return;
     }
     const action = { type: 'auth/createAccount' as const, profile, at: new Date().toISOString() };
@@ -128,7 +147,7 @@ export default function CreateProfile() {
         <Checkbox checked={terms} onChange={setTerms} label="J’accepte les Conditions d’utilisation et la Politique de confidentialité." />
       </Content>
       <BottomBar>
-        <Button label="Continuer" haptic="medium" onPress={submit} fill />
+        <Button label="Continuer" loading={saving} haptic="medium" onPress={submit} fill />
       </BottomBar>
     </Screen>
   );

@@ -6,6 +6,7 @@ import { blockerText, DELETE_REASONS } from '@/domain/account';
 import { authReduce, currentAccount, displayTarget } from '@/domain/auth';
 import { deletionBlockers } from '@/domain/state';
 import { useStore } from '@/store/AppStore';
+import { isServerMode } from '@/lib/supabase';
 import { demoOtpCode } from '@/store/otpProvider';
 import { color, radius, space } from '@/theme/tokens';
 import { Button } from '@/ui/Button';
@@ -73,6 +74,11 @@ export default function DeleteAccountScreen() {
   const proceed = () => {
     if (blockers.length) {
       setChecked(true);
+      return;
+    }
+    if (isServerMode()) {
+      // Not on the server yet: no code is sent and nothing is deleted.
+      toast('La suppression du compte n’est pas encore ouverte sur le serveur YA YO.', 'neutral');
       return;
     }
     const action = {

@@ -248,4 +248,10 @@ select pg_temp.act(:S);
 do $$ begin assert (select count(*) from storage.objects where bucket_id = 'private') = 0, 'pièces privées des autres invisibles'; end $$;
 reset role;
 
+-- ── E-mail ajouté en A7 : recopié dans le profil seulement une fois confirmé ──
+update auth.users set email = 'jean@exemple.cd' where id = :B;
+select pg_temp.ok((select email from public.profiles where id = :B) is null, 'e-mail non confirmé non recopié');
+update auth.users set email_confirmed_at = now() where id = :B;
+select pg_temp.ok((select email from public.profiles where id = :B) = 'jean@exemple.cd', 'e-mail confirmé recopié');
+
 select 'tous les tests passent' as resultat;
