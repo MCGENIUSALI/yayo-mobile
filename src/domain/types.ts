@@ -38,8 +38,8 @@ export interface Shop {
   handle?: string;
   /** Shop category shown on posts, e.g. "Électronique". */
   category?: string;
-  /** Local require() of the shop's profile photo. */
-  avatar?: number;
+  /** Local require() of the shop's profile photo, or its URL on the server. */
+  avatar?: number | string;
   /** Shop rating as shown on B5; computed from its products when absent. */
   rating?: number;
   reviews?: number;

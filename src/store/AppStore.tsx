@@ -3,6 +3,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useReducer,
 import { AppState as RNAppState } from 'react-native';
 import { decidePayment } from '@/domain/paymentProvider';
 import { supabase } from '@/lib/supabase';
+import { replaceCatalog } from '@/domain/catalog';
+import { fetchCatalog } from './serverCatalog';
 import { loadAccount, signOutServer } from './serverAuth';
 import { createInitialState, reducer, restoreState, type Action, type AppState } from '@/domain/state';
 
@@ -12,9 +14,13 @@ const STORAGE_KEY = 'yayo/demo-state';
 type Timed<A> = A extends { at: string } ? Omit<A, 'at'> & { at?: string } : A;
 export type StoreAction = Timed<Action>;
 
+export type CatalogStatus = 'demo' | 'loading' | 'ready' | 'error';
+
 interface Store {
   state: AppState;
   dispatch: (action: StoreAction) => void;
+  /** Changes each time the catalogue is replaced (server mode), so screens reading it re-render. */
+  catalog: { status: CatalogStatus; version: number; message?: string; reload: () => void };
 }
 
 const StoreContext = createContext<Store | null>(null);
@@ -62,7 +68,8 @@ function StoreRuntime({ initial, children }: { initial: AppState; children: Reac
   useRefundProvider(state, rawDispatch);
   useSupportAgent(state, rawDispatch);
 
-  const value = useMemo(() => ({ state, dispatch }), [state, dispatch]);
+  const catalog = useServerCatalog(rawDispatch);
+  const value = useMemo(() => ({ state, dispatch, catalog }), [state, dispatch, catalog]);
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
 
@@ -192,6 +199,51 @@ function useServerSession(dispatch: (a: Action) => void) {
       sub.subscription.unsubscribe();
     };
   }, [dispatch]);
+}
+
+/**
+ * Server mode: the demo catalogue is never shown. It is emptied before the first
+ * render, then filled with the shops and products read from Supabase, at launch
+ * and on each return to the foreground.
+ */
+if (supabase) replaceCatalog({ shops: {}, products: {} });
+
+function useServerCatalog(dispatch: (a: Action) => void): Store['catalog'] {
+  const [s, setS] = useState<{ status: CatalogStatus; version: number; message?: string }>({
+    status: supabase ? 'loading' : 'demo',
+    version: 0,
+  });
+  const [tick, setTick] = useState(0);
+  const reload = useCallback(() => setTick((n) => n + 1), []);
+
+  useEffect(() => {
+    if (!supabase) return;
+    const sub = RNAppState.addEventListener('change', (st) => {
+      if (st === 'active') setTick((n) => n + 1);
+    });
+    return () => sub.remove();
+  }, []);
+
+  useEffect(() => {
+    if (!supabase) return;
+    let cancelled = false;
+    void fetchCatalog().then((res) => {
+      if (cancelled) return;
+      if (!res.ok) {
+        // Keeps what was already loaded; the screens say the catalogue could not be read.
+        setS((prev) => ({ ...prev, status: prev.status === 'ready' ? 'ready' : 'error', message: res.message }));
+        return;
+      }
+      const version = replaceCatalog(res);
+      setS({ status: 'ready', version });
+      dispatch({ type: 'catalog/loaded', at: new Date().toISOString() });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [tick, dispatch]);
+
+  return useMemo(() => ({ ...s, reload }), [s, reload]);
 }
 
 /** Re-checks the session (idle/absolute expiry, suspension) at launch and on each return to the foreground. */

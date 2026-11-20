@@ -34,7 +34,7 @@ import { formatFC, formatUSD } from '@/domain/money';
 import { socialCount, type SocialToggle } from '@/domain/state';
 import type { CategoryId } from '@/domain/search';
 import type { Post, Product } from '@/domain/types';
-import { useStore } from '@/store/AppStore';
+import { useStore, type CatalogStatus } from '@/store/AppStore';
 import { duration, pressScale, spring } from '@/theme/motion';
 import { color, HIT, radius, space } from '@/theme/tokens';
 import { Button } from '@/ui/Button';
@@ -63,7 +63,7 @@ type HomeTab = 'foryou' | 'following' | 'lives';
 export default function Home() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const { state, dispatch } = useStore();
+  const { state, dispatch, catalog } = useStore();
   const feed = useFeed();
   const [tab, setTab] = useState<HomeTab>('foryou');
   const [sheetProduct, setSheetProduct] = useState<string | null>(null);
@@ -172,11 +172,15 @@ export default function Home() {
             <Text variant="h4" accessibilityRole="header">
               Sélection du moment
             </Text>
-            <View style={styles.grid}>
-              {grid.map((p, i) => (
-                <ProductCard key={p.id} product={p} index={i} width={cardW} />
-              ))}
-            </View>
+            {grid.length === 0 ? (
+              <CatalogNotice status={catalog.status} message={catalog.message} onRetry={catalog.reload} />
+            ) : (
+              <View style={styles.grid}>
+                {grid.map((p, i) => (
+                  <ProductCard key={p.id} product={p} index={i} width={cardW} />
+                ))}
+              </View>
+            )}
           </View>
         }
       />
@@ -265,8 +269,36 @@ function LivesList({ lives }: { lives: ContentItem[] }) {
 
 /* ---------- Promo Banner (1002:584) ---------- */
 
+/** Server mode: what the grid shows while the catalogue is read, if it failed, or when no shop has a product online yet. */
+function CatalogNotice({ status, message, onRetry }: { status: CatalogStatus; message?: string; onRetry: () => void }) {
+  if (status === 'loading') {
+    return (
+      <Text variant="bodyM" color={color.text.secondary}>
+        Chargement du catalogue…
+      </Text>
+    );
+  }
+  if (status === 'error') {
+    return (
+      <View style={{ gap: space.sm, alignItems: 'flex-start' }}>
+        <Text variant="bodyM" color={color.text.secondary}>
+          {message ?? 'Le catalogue YA YO n’a pas pu être chargé.'}
+        </Text>
+        <Button label="Réessayer" variant="secondary" onPress={onRetry} />
+      </View>
+    );
+  }
+  return (
+    <Text variant="bodyM" color={color.text.secondary}>
+      Aucun produit en ligne pour l’instant. Les boutiques validées par YA YO apparaîtront ici.
+    </Text>
+  );
+}
+
 function PromoBanner() {
   const go3 = products['jbl-go-3'];
+  // The banner promotes a demo product: hidden when the catalogue comes from the server.
+  if (!go3) return null;
   return (
     <View style={styles.promoWrap}>
       <View style={styles.promo}>

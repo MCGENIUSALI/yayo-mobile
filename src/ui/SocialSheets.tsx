@@ -25,11 +25,13 @@ import { Text } from './Text';
 
 /** Every post the buyer may see (static demo posts + published seller contents), minus « Pas intéressé ». */
 export function useFeed(): Post[] {
-  const { state } = useStore();
+  const { state, catalog } = useStore();
   return useMemo(() => {
     const hidden = new Set(state.social.hiddenPosts);
     return feedPosts(state.content, new Date().toISOString()).filter((p) => !hidden.has(p.id));
-  }, [state.content, state.social.hiddenPosts]);
+    // catalog.version: posts whose shop or products left the catalogue are dropped by feedPosts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.content, state.social.hiddenPosts, catalog.version]);
 }
 
 /** Any post by id, hidden or not (SC6 lists saved posts even after « Pas intéressé »). */

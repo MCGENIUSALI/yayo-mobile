@@ -34,7 +34,9 @@ export default function ProductScreen() {
     if (added) toast('Ajouté au panier', 'success');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const [colorName, setColorName] = useState(product?.colors[0]?.name ?? '');
+  const [picked, setColorName] = useState(product?.colors[0]?.name ?? '');
+  // Server mode: the product can arrive after the screen opened; its first color is then preselected.
+  const colorName = picked || product?.colors[0]?.name || '';
   const [qty, setQty] = useState(1);
 
   if (!product) {

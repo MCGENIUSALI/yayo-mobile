@@ -3,7 +3,7 @@
  * parts the buyer sees (SC3–SC6: feed, comments, saves).
  * Pure rules: the reducer in state.ts applies them.
  */
-import { products as catalog } from './catalog';
+import { products as catalog, inCatalog } from './catalog';
 import { posts as staticPosts } from './feed';
 import type { Photo } from './seller';
 import type { FC, Post } from './types';
@@ -297,7 +297,7 @@ export function feedPosts(content: ContentState, now: string): Post[] {
   const own = Object.values(content.items)
     .filter((i) => (i.kind === 'video' || i.kind === 'photos') && statusAt(i, now) === 'published')
     .map((i) => toPost(i, commentCount(content, i.id)));
-  return [...staticPosts.filter((p) => !managed.has(p.id)), ...own].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return [...staticPosts.filter((p) => !managed.has(p.id)), ...own].filter(inCatalog).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 /** Count shown on a post: the demo count (which includes the seeded comments) plus the ones written in the app. */

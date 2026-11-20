@@ -23,6 +23,8 @@ import { TopAppBar } from '@/ui/TopAppBar';
 /** B5 · Boutique vendeur: identity, trust signals, follow, catalogue by family. */
 export default function ShopScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  // Re-renders when the server catalogue arrives (opened from a link before it was loaded).
+  useStore();
   const shop = id ? shops[id] : undefined;
   if (!shop) return <MissingShop />;
   return <ShopPage key={shop.id} shop={shop} />;

@@ -327,8 +327,12 @@ function Results({
   onReset: () => void;
 }) {
   const reduced = useReducedMotion();
-  const items = useMemo(() => searchProducts(query, filters, sort), [query, filters, sort]);
-  const matchingShops = useMemo(() => shopsMatching(query, Object.values(shops)), [query]);
+  const { catalog } = useStore();
+  // catalog.version: the catalogue module is refilled in place in server mode.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const items = useMemo(() => searchProducts(query, filters, sort), [query, filters, sort, catalog.version]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const matchingShops = useMemo(() => shopsMatching(query, Object.values(shops)), [query, catalog.version]);
 
   // E2: every new search shows the skeleton briefly, then the results.
   const key = JSON.stringify([query, filters, sort]);

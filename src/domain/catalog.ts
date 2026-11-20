@@ -296,6 +296,29 @@ export const deliverySlots: DeliverySlot[] = [
 
 export const demoCourier: Courier = { name: 'Patrick K.', initials: 'PK', vehicle: 'Moto', rating: 4.9 };
 
+/**
+ * Server mode replaces the demo catalogue with the shops and products read from
+ * Supabase. The registries are filled in place so every import sees the new
+ * data; screens re-render through the store's catalogue version.
+ */
+let version = 0;
+
+export function replaceCatalog(next: { shops: Record<string, Shop>; products: Record<string, Product> }): number {
+  for (const k of Object.keys(shops)) delete shops[k];
+  for (const k of Object.keys(products)) delete products[k];
+  Object.assign(shops, next.shops);
+  Object.assign(products, next.products);
+  return ++version;
+}
+
+export const catalogVersion = (): number => version;
+
+/** True when a post, a collection or an order still points at shops and products of the current catalogue. */
+export function inCatalog(ref: { shopId?: string; productIds?: readonly string[] }): boolean {
+  if (ref.shopId && !shops[ref.shopId]) return false;
+  return (ref.productIds ?? []).every((id) => !!products[id]);
+}
+
 export function getProduct(id: string): Product {
   const p = products[id];
   if (!p) throw new Error(`Produit inconnu : ${id}`);

@@ -11,7 +11,7 @@ import {
   type AuthAction,
   type AuthState,
 } from './auth';
-import { addresses as demoAddresses, getProduct } from './catalog';
+import { addresses as demoAddresses, getProduct, products as catalogProducts } from './catalog';
 import {
   cashDue,
   courierCard,
@@ -119,6 +119,8 @@ export type Action =
   | { type: 'cart/add'; productId: string; color: string; qty: number; at: string }
   | { type: 'cart/setQty'; productId: string; color: string; qty: number; at: string }
   | { type: 'cart/remove'; productId: string; color: string; at: string }
+  /** Server mode: the catalogue was replaced; cart lines and favourites of products no longer listed are dropped. */
+  | { type: 'catalog/loaded'; at: string }
   | { type: 'draft/update'; patch: Partial<CheckoutDraft> }
   | { type: 'social/toggle'; list: SocialToggle; id: string; at: string }
   | { type: 'social/hidePost'; postId: string }
@@ -368,6 +370,13 @@ export function reducer(state: AppState, action: Action): AppState {
   if (action.type.startsWith('content/') || action.type.startsWith('collection/') || action.type.startsWith('comment/'))
     return reduceContent(state, action as ContentAction);
   switch (action.type) {
+    case 'catalog/loaded': {
+      const known = (id: string) => !!catalogProducts[id];
+      const cart = state.cart.filter((l) => known(l.productId));
+      const wishlist = state.social.wishlist.filter(known);
+      if (cart.length === state.cart.length && wishlist.length === state.social.wishlist.length) return state;
+      return { ...state, cart, social: { ...state.social, wishlist } };
+    }
     case 'cart/add': {
       // A9: adding to the cart needs an account; the app resumes the add after sign-in.
       if (!state.auth.session) return reject(state, 'NOT_SIGNED_IN', 'Connecte-toi pour ajouter au panier.', action.at);

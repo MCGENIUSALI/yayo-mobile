@@ -7,7 +7,6 @@ import { AppState, Platform } from 'react-native';
  * EXPO_PUBLIC_SUPABASE_ANON_KEY, l'app reste en mode démo (supabase = null).
  * La clé « anon » est publique : ce sont les règles d'accès de la base
  * (supabase/migrations) qui protègent les données, pas la clé.
- * Aucun écran ne l'utilise encore.
  */
 const url = process.env.EXPO_PUBLIC_SUPABASE_URL?.trim();
 const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY?.trim();
