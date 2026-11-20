@@ -12,6 +12,19 @@ npx expo start
 
 Scanne le QR code avec Expo Go, ou ouvre un simulateur iOS / Android.
 
+### Tester en mode démo
+
+Le mode démo ne contacte aucun serveur : le code de connexion s'affiche à l'écran. C'est le mode à utiliser tant que l'envoi des e-mails et des SMS n'est pas branché sur Supabase.
+
+```bash
+git checkout claude/project-thread-n8vh3c && git pull
+mv .env.local .env.local.off 2>/dev/null   # coupe le mode serveur s'il était actif
+npm install
+npm run mobile
+```
+
+Comptes démo : acheteur `81 234 5678`, vendeuse `89 765 4321`, livreur `99 876 5432`, compte suspendu `85 000 0000`. Pour revenir au mode serveur : `mv .env.local.off .env.local`.
+
 ## Aperçu web (Vercel)
 
 `vercel.json` construit la version web (`npx expo export -p web`, dossier `dist`). Importer le dépôt dans Vercel suffit : chaque branche reçoit un lien d'aperçu à ouvrir dans Safari ou Chrome. La version web sert à parcourir les écrans ; l'haptique et le comportement natif se vérifient dans Expo Go.
