@@ -161,6 +161,37 @@ export function productPriceError(d: Pick<ProductDraft, 'price' | 'compareAt' | 
   return null;
 }
 
+export type ProductFields = Omit<SellerProduct, 'id' | 'rating' | 'reviews'>;
+
+/** V9 + V10: checks a product draft and turns it into the saved fields (same rules on the device and on the server). */
+export function productFields(
+  d: ProductDraft,
+  status: ProductStatus,
+  at: string,
+): { ok: true; fields: ProductFields } | { ok: false; code: string; message: string } {
+  const infoErr = productInfoError(d);
+  if (infoErr) return { ok: false, code: 'INVALID_PRODUCT', message: infoErr };
+  // A draft may be saved before its price is known (V10 "Brouillon").
+  const incompleteDraft = status === 'draft' && !d.price.trim();
+  const priceErr = incompleteDraft ? null : productPriceError(d);
+  if (priceErr) return { ok: false, code: 'INVALID_PRICE', message: priceErr };
+  return {
+    ok: true,
+    fields: {
+      name: d.name.trim().replace(/\s+/g, ' '),
+      category: d.category,
+      description: d.description.trim(),
+      photos: d.photos,
+      price: incompleteDraft ? 0 : parseAmount(d.price),
+      compareAt: d.compareAt.trim() && !incompleteDraft ? parseAmount(d.compareAt) : undefined,
+      stock: d.stock.trim() ? parseAmount(d.stock) || 0 : 0,
+      colors: d.colors,
+      status,
+      updatedAt: at,
+    },
+  };
+}
+
 /** V10 · "Tu reçois (hors livraison)". */
 export function payoutPreview(price: FC) {
   const commission = Math.round(price * COMMISSION_RATE);
@@ -467,25 +498,9 @@ export function sellerReduce(
     }
 
     case 'seller/saveProduct': {
-      const d = a.draft;
-      const infoErr = productInfoError(d);
-      if (infoErr) return fail('INVALID_PRODUCT', infoErr);
-      // A draft may be saved before its price is known (V10 "Brouillon").
-      const incompleteDraft = a.status === 'draft' && !d.price.trim();
-      const priceErr = incompleteDraft ? null : productPriceError(d);
-      if (priceErr) return fail('INVALID_PRICE', priceErr);
-      const fields = {
-        name: d.name.trim().replace(/\s+/g, ' '),
-        category: d.category,
-        description: d.description.trim(),
-        photos: d.photos,
-        price: incompleteDraft ? 0 : parseAmount(d.price),
-        compareAt: d.compareAt.trim() && !incompleteDraft ? parseAmount(d.compareAt) : undefined,
-        stock: d.stock.trim() ? parseAmount(d.stock) || 0 : 0,
-        colors: d.colors,
-        status: a.status,
-        updatedAt: a.at,
-      };
+      const r = productFields(a.draft, a.status, a.at);
+      if (!r.ok) return fail(r.code, r.message);
+      const fields = r.fields;
       if (a.id) {
         const existing = space.products.find((p) => p.id === a.id);
         if (!existing) return fail('NOT_FOUND', 'Produit introuvable.');

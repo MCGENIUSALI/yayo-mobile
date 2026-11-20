@@ -6,7 +6,7 @@ import { initialsOf } from '@/domain/auth';
 import { formatTime } from '@/domain/format';
 import { formatFC } from '@/domain/money';
 import { orderNet } from '@/domain/seller';
-import { useSeller } from '@/store/useSeller';
+import { useSeller, useSellerActions } from '@/store/useSeller';
 import { color, space } from '@/theme/tokens';
 import { Button } from '@/ui/Button';
 import { SummaryRow } from '@/ui/Commerce';
@@ -25,6 +25,7 @@ const CURRENT = { new: 1, preparing: 1, ready: 3, handed_over: 4 } as const;
 export default function SellerOrderDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { orders, shop, dispatch, state } = useSeller();
+  const sellerActions = useSellerActions();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [stockout, setStockout] = useState(false);
@@ -171,9 +172,13 @@ export default function SellerOrderDetail() {
               label="Signaler"
               variant="danger"
               haptic="warning"
-              onPress={() => {
-                dispatch({ type: 'seller/markOutOfStock', productIds: ownProducts });
+              onPress={async () => {
+                const r = await sellerActions.markOutOfStock(ownProducts);
                 setStockout(false);
+                if (!r.ok) {
+                  toast(r.message, 'danger');
+                  return;
+                }
                 toast('Rupture signalée : l’équipe YA YO te contacte pour la suite de la commande.', 'success');
               }}
               style={{ flex: 1 }}

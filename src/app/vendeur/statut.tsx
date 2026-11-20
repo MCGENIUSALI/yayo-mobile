@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { Clock, FileCheck, FlaskConical, ShieldCheck, Store } from 'lucide-react-native';
 import { StyleSheet, View } from 'react-native';
 import { formatDay } from '@/domain/format';
+import { isServerMode } from '@/lib/supabase';
 import { useSeller } from '@/store/useSeller';
 import { color, radius, space } from '@/theme/tokens';
 import { Button } from '@/ui/Button';
@@ -62,7 +63,7 @@ export default function ShopStatus() {
           <TimelineStep title="Boutique publiée" description="Visible par les acheteurs" state={verified ? 'done' : 'upcoming'} icon={Clock} last />
         </View>
 
-        {!verified ? (
+        {!verified && !isServerMode() ? (
           <View style={styles.demo}>
             <View style={styles.demoTitle}>
               <FlaskConical size={16} color={color.icon.secondary} strokeWidth={2} />

@@ -5,6 +5,7 @@ import { decidePayment } from '@/domain/paymentProvider';
 import { supabase } from '@/lib/supabase';
 import { replaceCatalog } from '@/domain/catalog';
 import { fetchCatalog } from './serverCatalog';
+import { loadSellerSpace } from './serverSeller';
 import { loadAccount, signOutServer } from './serverAuth';
 import { createInitialState, reducer, restoreState, type Action, type AppState } from '@/domain/state';
 
@@ -69,6 +70,7 @@ function StoreRuntime({ initial, children }: { initial: AppState; children: Reac
   useSupportAgent(state, rawDispatch);
 
   const catalog = useServerCatalog(rawDispatch);
+  useServerSellerSpace(state.auth.session?.accountId, rawDispatch);
   const value = useMemo(() => ({ state, dispatch, catalog }), [state, dispatch, catalog]);
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
@@ -244,6 +246,23 @@ function useServerCatalog(dispatch: (a: Action) => void): Store['catalog'] {
   }, [tick, dispatch]);
 
   return useMemo(() => ({ ...s, reload }), [s, reload]);
+}
+
+/** Server mode: the signed-in account's seller space is read from Supabase (shop, documents sent, products). */
+function useServerSellerSpace(accountId: string | undefined, dispatch: (a: Action) => void) {
+  useEffect(() => {
+    if (!supabase || !accountId) return;
+    let cancelled = false;
+    loadSellerSpace(accountId)
+      .then((space) => {
+        if (!cancelled) dispatch({ type: 'sellerServer/loaded', accountId, space, at: new Date().toISOString() });
+      })
+      // Offline: the space stays as last loaded; the next write reloads it.
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId, dispatch]);
 }
 
 /** Re-checks the session (idle/absolute expiry, suspension) at launch and on each return to the foreground. */

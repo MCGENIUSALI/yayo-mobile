@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { BackHandler, View } from 'react-native';
 import { productInfoError, productPriceError, type ProductDraft, type ProductStatus } from '@/domain/seller';
-import { useSeller } from '@/store/useSeller';
+import { useSeller, useSellerActions } from '@/store/useSeller';
 import { color, space } from '@/theme/tokens';
 import { Button } from '@/ui/Button';
 import { useToast } from '@/ui/Feedback';
@@ -14,7 +14,9 @@ import { TopAppBar } from '@/ui/TopAppBar';
 
 /** V9 · Ajouter un produit (photos et infos) → V10 · Prix, stock et variantes. */
 export default function NewProduct() {
-  const { shop, dispatch } = useSeller();
+  const { shop } = useSeller();
+  const actions = useSellerActions();
+  const [saving, setSaving] = useState<ProductStatus | null>(null);
   const toast = useToast();
   const [step, setStep] = useState<1 | 2>(1);
   const [draft, setDraft] = useState<ProductDraft>(() => draftOf());
@@ -43,7 +45,8 @@ export default function NewProduct() {
     setStep(2);
   };
 
-  const save = (status: ProductStatus) => {
+  const save = async (status: ProductStatus) => {
+    if (saving) return;
     // A draft only needs photos and a name; the price can be completed later.
     const err = status === 'draft' ? (draft.price.trim() ? productPriceError(draft) : null) : productPriceError(draft);
     if (err) {
@@ -52,7 +55,14 @@ export default function NewProduct() {
       toast(err, 'danger');
       return;
     }
-    dispatch({ type: 'seller/saveProduct', draft, status });
+    setSaving(status);
+    const r = await actions.saveProduct(draft, status);
+    setSaving(null);
+    if (!r.ok) {
+      haptic('warning');
+      toast(r.message, 'danger');
+      return;
+    }
     haptic('success');
     toast(
       status === 'draft' ? 'Brouillon enregistré.' : shop?.status === 'verified' ? 'Produit publié dans ton catalogue.' : 'Produit prêt : il sera publié à la validation de ta boutique.',
@@ -74,10 +84,10 @@ export default function NewProduct() {
         ) : (
           <>
             <View style={{ flex: 1 }}>
-              <Button label="Brouillon" variant="outline" onPress={() => save('draft')} fill />
+              <Button label="Brouillon" variant="outline" loading={saving === 'draft'} onPress={() => save('draft')} fill />
             </View>
             <View style={{ flex: 1.4 }}>
-              <Button label="Publier le produit" haptic="success" onPress={() => save('online')} fill />
+              <Button label="Publier le produit" haptic="success" loading={saving === 'online'} onPress={() => save('online')} fill />
             </View>
           </>
         )}

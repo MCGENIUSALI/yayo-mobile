@@ -121,6 +121,8 @@ export type Action =
   | { type: 'cart/remove'; productId: string; color: string; at: string }
   /** Server mode: the catalogue was replaced; cart lines and favourites of products no longer listed are dropped. */
   | { type: 'catalog/loaded'; at: string }
+  /** Server mode: the seller space as stored by Supabase (null: no shop yet). Read notifications stay on the device. */
+  | { type: 'sellerServer/loaded'; accountId: string; space: SellerSpace | null; at: string }
   | { type: 'draft/update'; patch: Partial<CheckoutDraft> }
   | { type: 'social/toggle'; list: SocialToggle; id: string; at: string }
   | { type: 'social/hidePost'; postId: string }
@@ -370,6 +372,12 @@ export function reducer(state: AppState, action: Action): AppState {
   if (action.type.startsWith('content/') || action.type.startsWith('collection/') || action.type.startsWith('comment/'))
     return reduceContent(state, action as ContentAction);
   switch (action.type) {
+    case 'sellerServer/loaded': {
+      const seller = { ...state.seller };
+      if (action.space) seller[action.accountId] = { ...action.space, readNotifications: state.seller[action.accountId]?.readNotifications ?? [] };
+      else delete seller[action.accountId];
+      return { ...state, seller, lastError: undefined };
+    }
     case 'catalog/loaded': {
       const known = (id: string) => !!catalogProducts[id];
       const cart = state.cart.filter((l) => known(l.productId));

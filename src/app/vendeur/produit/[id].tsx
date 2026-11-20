@@ -3,7 +3,7 @@ import { Info, Trash2, TriangleAlert } from 'lucide-react-native';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { LOW_STOCK, parseAmount, productInfoError, productPriceError, type ProductDraft } from '@/domain/seller';
-import { useSeller } from '@/store/useSeller';
+import { useSeller, useSellerActions } from '@/store/useSeller';
 import { color, radius, space } from '@/theme/tokens';
 import { Button } from '@/ui/Button';
 import { useToast } from '@/ui/Feedback';
@@ -19,7 +19,9 @@ import { TopAppBar } from '@/ui/TopAppBar';
 /** V14 · Modifier un produit + V15 · Supprimer un produit. */
 export default function EditProduct() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { shop, dispatch } = useSeller();
+  const { shop } = useSeller();
+  const actions = useSellerActions();
+  const [busy, setBusy] = useState(false);
   const toast = useToast();
   const product = shop?.products.find((p) => p.id === id);
   const [draft, setDraft] = useState<ProductDraft>(() => draftOf(product));
@@ -44,7 +46,8 @@ export default function EditProduct() {
   const stock = parseAmount(draft.stock);
   const low = stock >= 0 && stock <= LOW_STOCK;
 
-  const save = () => {
+  const save = async () => {
+    if (busy) return;
     const status = product.status === 'draft' && !online ? 'draft' : online ? 'online' : 'offline';
     const err = productInfoError(draft) ?? (status === 'draft' && !draft.price.trim() ? null : productPriceError(draft));
     if (err) {
@@ -52,7 +55,14 @@ export default function EditProduct() {
       toast(err, 'danger');
       return;
     }
-    dispatch({ type: 'seller/saveProduct', id: product.id, draft, status });
+    setBusy(true);
+    const r = await actions.saveProduct(draft, status, product.id);
+    setBusy(false);
+    if (!r.ok) {
+      haptic('warning');
+      toast(r.message, 'danger');
+      return;
+    }
     haptic('success');
     toast('Modifications enregistrées.', 'success');
     router.back();
@@ -93,7 +103,7 @@ export default function EditProduct() {
         ) : null}
       </Content>
       <BottomBar>
-        <Button label="Enregistrer les modifications" haptic="medium" onPress={save} fill />
+        <Button label="Enregistrer les modifications" haptic="medium" loading={busy} onPress={save} fill />
         <Button label="Supprimer le produit" variant="ghost" leadingIcon={Trash2} onPress={() => setConfirmDelete(true)} fill />
       </BottomBar>
 
@@ -111,9 +121,17 @@ export default function EditProduct() {
                 label="Supprimer"
                 variant="danger"
                 haptic="warning"
-                onPress={() => {
-                  dispatch({ type: 'seller/deleteProduct', id: product.id });
+                loading={busy}
+                onPress={async () => {
+                  if (busy) return;
+                  setBusy(true);
+                  const r = await actions.deleteProduct(product.id);
+                  setBusy(false);
                   setConfirmDelete(false);
+                  if (!r.ok) {
+                    toast(r.message, 'danger');
+                    return;
+                  }
                   toast('Produit supprimé.', 'success');
                   router.back();
                 }}
@@ -142,10 +160,17 @@ export default function EditProduct() {
             label="Mettre hors ligne"
             variant="outline"
             size="M"
-            onPress={() => {
-              dispatch({ type: 'seller/setOnline', id: product.id, online: false });
-              setOnline(false);
+            onPress={async () => {
+              if (busy) return;
+              setBusy(true);
+              const r = await actions.setOnline(product, false);
+              setBusy(false);
               setConfirmDelete(false);
+              if (!r.ok) {
+                toast(r.message, 'danger');
+                return;
+              }
+              setOnline(false);
               toast('Produit mis hors ligne.', 'success');
             }}
             fill

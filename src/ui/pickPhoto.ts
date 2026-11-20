@@ -4,7 +4,7 @@ export type PickResult = { ok: true; uri: string } | { ok: false; reason: 'cance
 
 /**
  * Opens the camera or the gallery (expo-image-picker, works in Expo Go).
- * Returns a local URI; nothing is uploaded until a server exists.
+ * Returns a local URI; in server mode the seller screens upload it to Supabase Storage.
  */
 export async function pickPhoto(source: 'camera' | 'library', mediaTypes: ImagePicker.MediaType[] = ['images']): Promise<PickResult> {
   try {

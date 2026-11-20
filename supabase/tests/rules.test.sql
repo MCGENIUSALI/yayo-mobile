@@ -40,11 +40,19 @@ set role authenticated;
 select pg_temp.act(:S);
 insert into public.shops (owner_id, name, handle, category, commune) values (:S, 'JBL Store Kin', 'jblstorekin', 'Électronique et audio', 'Gombe');
 select pg_temp.expect($$update public.shops set status = 'approved'$$, '42501');
-insert into public.products (shop_id, name, price, status, category_id)
-  select public.my_shop_id(), 'JBL Flip 6', 189000, 'active', (select id from public.categories where name = 'Électronique › Enceintes');
-insert into public.product_variants (product_id, color, stock) select id, 'Noir', 3 from public.products;
-insert into public.product_variants (product_id, color, stock) select id, 'Bleu', 1 from public.products;
+insert into public.products (shop_id, name, price, status, stock, category_id)
+  select public.my_shop_id(), 'JBL Flip 6', 189000, 'active', 4, (select id from public.categories where name = 'Électronique › Enceintes');
+-- Un seul stock pour le produit (V10), deux couleurs au choix.
+insert into public.product_variants (product_id, color) select id, 'Noir' from public.products;
+insert into public.product_variants (product_id, color) select id, 'Bleu' from public.products;
 select pg_temp.expect($$update public.products set rating = 5$$, '42501');
+-- Ce que fait l'app vendeur (V1, V9, V10) : catégorie modifiable, brouillon sans prix, photos.
+update public.shops set category = 'Électronique et audio', pickup_address = '45, bd du 30 Juin' where owner_id = :S;
+insert into public.products (shop_id, name, price, status, stock) select public.my_shop_id(), 'Brouillon sans prix', 0, 'draft', 0;
+select pg_temp.expect($$insert into public.products (shop_id, name, price, status) select public.my_shop_id(), 'Publié sans prix', 0, 'active'$$, '23514');
+insert into public.product_photos (product_id, position, path) select id, 0, :'S' || '/products/' || id || '/a.jpg' from public.products where name = 'Brouillon sans prix';
+insert into public.product_variants (product_id, color) select id, '' from public.products where name = 'Brouillon sans prix';
+delete from public.products where name = 'Brouillon sans prix';
 select pg_temp.act(:B);
 do $$ begin assert (select count(*) from public.products) = 0, 'produit d’une boutique non validée visible'; end $$;
 reset role;
@@ -68,6 +76,9 @@ select pg_temp.act(:B);
 insert into public.addresses (user_id, label, street, commune, phone, is_default) values (:B, 'Maison', '12 av. Kasa-Vubu', 'Kalamu', '+243812345678', true);
 select pg_temp.expect(format($$select public.place_checkout('[{"variant_id":"%s","qty":5}]', (select id from public.addresses), 'asap', 'cash')$$,
   (select id from public.product_variants where color = 'Noir')), 'OUT_OF_STOCK');
+-- Stock partagé entre les couleurs : 2 noires + 3 bleues dépassent les 4 en stock.
+select pg_temp.expect(format($$select public.place_checkout('[{"variant_id":"%s","qty":2},{"variant_id":"%s","qty":3}]', (select id from public.addresses), 'asap', 'cash')$$,
+  (select id from public.product_variants where color = 'Noir'), (select id from public.product_variants where color = 'Bleu')), 'OUT_OF_STOCK');
 select pg_temp.expect(format($$select public.place_checkout('[{"variant_id":"%s","qty":1}]', (select id from public.addresses), 'asap', 'mobile_money', '0901234567')$$,
   (select id from public.product_variants where color = 'Noir')), 'UNKNOWN_OPERATOR');
 select public.place_checkout(
@@ -83,7 +94,7 @@ begin
   assert o.buyer_label = 'Jean M.' and o.buyer_commune = 'Kalamu', 'ce que voit le vendeur';
   assert o.payment = 'initiated', 'pas encore payé';
 end $$;
-do $$ begin assert (select stock from public.product_variants where color = 'Noir') = 1, 'stock réservé'; end $$;
+do $$ begin assert (select stock from public.products) = 2, 'stock réservé'; end $$;
 select pg_temp.expect($$select * from public.order_codes$$, '42501');
 select pg_temp.expect($$update public.orders set payment = 'released'$$, '42501');
 select pg_temp.expect($$select public.payment_result((select id from public.checkouts), 1, 'approved')$$, '42501');
@@ -171,11 +182,11 @@ set role authenticated;
 select pg_temp.act(:B);
 select public.place_checkout(jsonb_build_array(jsonb_build_object('variant_id', (select id from public.product_variants where color = 'Bleu'), 'qty', 1)),
   (select id from public.addresses), 'tomorrow-am', 'cash') as ck2 \gset
-do $$ begin assert (select stock from public.product_variants where color = 'Bleu') = 0, 'stock réservé (cash)'; end $$;
+do $$ begin assert (select stock from public.products) = 1, 'stock réservé (cash)'; end $$;
 select public.buyer_cancel(id, 'cheaper', 'Trouvé moins cher') from public.orders where checkout_id = :'ck2';
 reset role;
 select pg_temp.ok((select payment from public.orders where checkout_id = :'ck2') = 'failed' and (select refund from public.orders where checkout_id = :'ck2') = 'none', 'annulée sans remboursement');
-select pg_temp.ok((select stock from public.product_variants where color = 'Bleu') = 1, 'stock rendu');
+select pg_temp.ok((select stock from public.products) = 2, 'stock rendu');
 
 -- ── Paiement refusé (C6) puis nouvel essai sur la même commande ──
 set role authenticated;

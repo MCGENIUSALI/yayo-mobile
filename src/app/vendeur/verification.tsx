@@ -3,7 +3,7 @@ import { FileText, Lock } from 'lucide-react-native';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { kycError } from '@/domain/seller';
-import { useSeller } from '@/store/useSeller';
+import { useSeller, useSellerActions } from '@/store/useSeller';
 import { color, space } from '@/theme/tokens';
 import { Button } from '@/ui/Button';
 import { Alert, useToast } from '@/ui/Feedback';
@@ -17,7 +17,8 @@ import type { Photo } from '@/domain/seller';
 
 /** V2 · Vérification d’identité (étape 2 sur 3). */
 export default function IdentityCheck() {
-  const { account, shop, dispatch } = useSeller();
+  const { account, shop } = useSeller();
+  const actions = useSellerActions();
   const toast = useToast();
   const [idFront, setIdFront] = useState<Photo | undefined>(shop?.kyc?.idDoc);
   const [idBack, setIdBack] = useState<Photo | undefined>(undefined);
@@ -49,14 +50,22 @@ export default function IdentityCheck() {
       toast(error, 'danger');
       return;
     }
+    if (sending) return;
     setSending(true);
-    // Short upload state so the documents never look "instantly" checked.
-    setTimeout(() => {
-      dispatch({ type: 'seller/submitKyc', kyc });
-      setSending(false);
-      haptic('success');
-      router.replace('/vendeur/statut');
-    }, 700);
+    // Demo: a short upload state so the documents never look "instantly" checked. Server: the real upload.
+    const started = Date.now();
+    void actions.submitKyc(kyc).then((r) => {
+      setTimeout(() => {
+        setSending(false);
+        if (!r.ok) {
+          haptic('warning');
+          toast(r.message, 'danger');
+          return;
+        }
+        haptic('success');
+        router.replace('/vendeur/statut');
+      }, actions.server ? 0 : Math.max(0, 700 - (Date.now() - started)));
+    });
   };
 
   return (

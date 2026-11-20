@@ -13,6 +13,7 @@ import { color, radius, space } from '@/theme/tokens';
 import { Button } from './Button';
 import { useEnter } from './Feedback';
 import { PageIndicator } from './Form';
+import { isServerMode } from '@/lib/supabase';
 import { PICK_ERROR, pickPhoto } from './pickPhoto';
 import { haptic, PressableScale } from './Pressable';
 import { Sheet } from './Sheet';
@@ -260,26 +261,31 @@ export function AddPhotoTile({ label = 'Ajouter', size = 96, onPick, title }: { 
             {error}
           </Text>
         ) : null}
-        <Text variant="bodyS" color={color.text.secondary}>
-          Ou choisis une image de démo :
-        </Text>
-        <View style={styles.gallery}>
-          {DEMO_GALLERY.map((src, i) => (
-            <PressableScale
-              key={i}
-              accessibilityRole="button"
-              accessibilityLabel={`Image de démo ${i + 1}`}
-              onPress={() => {
-                onPick(src);
-                setOpen(false);
-              }}
-              haptic="selection"
-              scaleTo={pressScale.card}
-            >
-              <Image source={src} style={styles.galleryItem} contentFit="cover" />
-            </PressableScale>
-          ))}
-        </View>
+        {/* Server mode: only real photos from the phone, never demo pictures. */}
+        {isServerMode() ? null : (
+          <>
+            <Text variant="bodyS" color={color.text.secondary}>
+              Ou choisis une image de démo :
+            </Text>
+            <View style={styles.gallery}>
+              {DEMO_GALLERY.map((src, i) => (
+                <PressableScale
+                  key={i}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Image de démo ${i + 1}`}
+                  onPress={() => {
+                    onPick(src);
+                    setOpen(false);
+                  }}
+                  haptic="selection"
+                  scaleTo={pressScale.card}
+                >
+                  <Image source={src} style={styles.galleryItem} contentFit="cover" />
+                </PressableScale>
+              ))}
+            </View>
+          </>
+        )}
       </Sheet>
     </>
   );

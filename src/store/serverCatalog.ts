@@ -30,10 +30,12 @@ export interface ProductRow {
   description: string;
   price: number;
   compare_at: number | null;
+  /** One stock for the product, shared by its colors (V10). */
+  stock: number;
   rating: number | string;
   reviews: number;
   categories: { name: string; department: Department } | null;
-  product_variants: { color: string; stock: number }[];
+  product_variants: { color: string }[];
   product_photos: { position: number; path: string }[];
 }
 
@@ -91,10 +93,10 @@ export function toProduct(r: ProductRow, publicUrl: (path: string) => string): P
     shortName: r.short_name?.trim() || r.name,
     price: r.price,
     compareAt: r.compare_at ?? undefined,
-    stock: variants.reduce((n, v) => n + v.stock, 0),
+    stock: r.stock,
     rating: Number(r.rating) || 0,
     reviews: r.reviews,
-    colors: variants.map((v) => ({ name: v.color, hex: COLOR_HEX[v.color] ?? NEUTRAL })),
+    colors: variants.filter((v) => v.color).map((v) => ({ name: v.color, hex: COLOR_HEX[v.color] ?? NEUTRAL })),
     tint: PHOTO_TINT,
     image: photo ? publicUrl(photo.path) : undefined,
     description: r.description,
@@ -116,7 +118,7 @@ export async function fetchCatalog(c?: SupabaseClient | null): Promise<CatalogRe
       db.from('shops').select('id, name, handle, category, tagline, commune, avatar_path, prep_min_hours, prep_max_hours, accepts_cash, verified').eq('status', 'approved'),
       db
         .from('products')
-        .select('id, shop_id, name, short_name, description, price, compare_at, rating, reviews, categories(name, department), product_variants(color, stock), product_photos(position, path)')
+        .select('id, shop_id, name, short_name, description, price, compare_at, stock, rating, reviews, categories(name, department), product_variants(color), product_photos(position, path)')
         .eq('status', 'active')
         .order('created_at', { ascending: false }),
     ]);

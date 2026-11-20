@@ -1,8 +1,7 @@
 import { describe, expect, it, jest } from '@jest/globals';
+import { familyOf, fetchCatalog, initials, toProduct, toShop, type ProductRow, type ShopRow } from '../serverCatalog';
 
 jest.mock('@/lib/supabase', () => ({ supabase: null, isServerMode: () => false }));
-
-import { familyOf, fetchCatalog, initials, toProduct, toShop, type ProductRow, type ShopRow } from '../serverCatalog';
 
 const url = (p: string) => `https://cdn.test/media/${p}`;
 
@@ -28,13 +27,14 @@ const productRow: ProductRow = {
   description: 'Toile respirante.',
   price: 45000,
   compare_at: 55000,
+  stock: 7,
   rating: '4.4',
   reviews: 39,
   categories: { name: 'Mode › Chaussures', department: 'mode' },
   product_variants: [
-    { color: 'Noir', stock: 3 },
-    { color: 'Blanc', stock: 4 },
-    { color: 'Bordeaux', stock: 0 },
+    { color: 'Noir' },
+    { color: 'Blanc' },
+    { color: 'Bordeaux' },
   ],
   product_photos: [
     { position: 1, path: 's1/p1/b.jpg' },
@@ -50,7 +50,7 @@ describe('serverCatalog mapping', () => {
     expect(toShop({ ...shopRow, prep_max_hours: 24, avatar_path: null }, url)).toMatchObject({ deliveryLead: '24 h', avatar: undefined });
   });
 
-  it('maps a product row: stock summed over colors, first photo, family from the category', () => {
+  it('maps a product row: one shared stock, first photo, family from the category', () => {
     const p = toProduct(productRow, url);
     expect(p).toMatchObject({ shortName: 'Chaussures sport en toile', price: 45000, compareAt: 55000, stock: 7, rating: 4.4, department: 'mode', family: 'Chaussures', image: 'https://cdn.test/media/s1/p1/a.jpg' });
     expect(p.colors.map((c) => c.name)).toEqual(['Blanc', 'Bordeaux', 'Noir']);
@@ -59,7 +59,7 @@ describe('serverCatalog mapping', () => {
   });
 
   it('handles a product without photo, category or colors', () => {
-    const p = toProduct({ ...productRow, compare_at: null, categories: null, product_variants: [], product_photos: [] }, url);
+    const p = toProduct({ ...productRow, compare_at: null, stock: 0, categories: null, product_variants: [], product_photos: [] }, url);
     expect(p).toMatchObject({ stock: 0, image: undefined, compareAt: undefined, department: 'maison', family: 'Autres' });
   });
 

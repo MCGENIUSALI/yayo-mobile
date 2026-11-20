@@ -6,6 +6,7 @@ import { formatDay } from '@/domain/format';
 import { formatFC, formatUSD } from '@/domain/money';
 import { detectOperator } from '@/domain/paymentProvider';
 import { maskPhone, parseAmount, revenue, trend } from '@/domain/seller';
+import { isServerMode } from '@/lib/supabase';
 import { useSeller } from '@/store/useSeller';
 import { color, radius, space } from '@/theme/tokens';
 import { Button } from '@/ui/Button';
@@ -39,6 +40,12 @@ export default function SellerRevenue() {
   const withdraw = () => {
     if (!(value > 0) || value > r.available) {
       haptic('warning');
+      return;
+    }
+    // Payouts go through the Mobile Money aggregator, not signed yet: nothing is sent from the server mode.
+    if (isServerMode()) {
+      haptic('warning');
+      toast('Les retraits Mobile Money ne sont pas encore ouverts sur le serveur YA YO.', 'neutral');
       return;
     }
     dispatch({ type: 'seller/withdraw', amount: value });

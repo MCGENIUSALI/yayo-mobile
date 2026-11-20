@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { CITIES } from '@/domain/auth';
 import { profileError, SHOP_CATEGORIES, type ShopProfile } from '@/domain/seller';
-import { useSeller } from '@/store/useSeller';
+import { useSeller, useSellerActions } from '@/store/useSeller';
 import { color, space } from '@/theme/tokens';
 import { SelectField } from '@/ui/Auth';
 import { Button } from '@/ui/Button';
@@ -20,7 +20,9 @@ import { TopAppBar } from '@/ui/TopAppBar';
 export default function CreateShop() {
   const { edition } = useLocalSearchParams<{ edition?: string }>();
   const editing = edition === '1';
-  const { account, shop, dispatch, state } = useSeller();
+  const { account, shop, state } = useSeller();
+  const actions = useSellerActions();
+  const [saving, setSaving] = useState(false);
   const toast = useToast();
   const p = shop?.profile;
   const [logo, setLogo] = useState(p?.logo);
@@ -34,14 +36,22 @@ export default function CreateShop() {
   const error = profileError(profile);
   const communes = CITIES[account?.city ?? 'Kinshasa'] ?? CITIES.Kinshasa!;
 
-  const submit = () => {
+  const submit = async () => {
+    if (saving) return;
     setTouched(true);
     if (error) {
       haptic('warning');
       toast(error, 'danger');
       return;
     }
-    dispatch({ type: 'seller/saveProfile', profile });
+    setSaving(true);
+    const r = await actions.saveProfile(profile);
+    setSaving(false);
+    if (!r.ok) {
+      haptic('warning');
+      toast(r.message, 'danger');
+      return;
+    }
     haptic('success');
     if (editing) {
       toast('Boutique mise à jour.', 'success');
@@ -111,7 +121,7 @@ export default function CreateShop() {
         {state.lastError?.code === 'INVALID_PROFILE' ? <Text variant="bodyS" color={color.text.danger}>{state.lastError.message}</Text> : null}
       </Content>
       <BottomBar>
-        <Button label={editing ? 'Enregistrer' : 'Continuer'} leadingIcon={editing ? Store : undefined} haptic="medium" onPress={submit} fill />
+        <Button label={editing ? 'Enregistrer' : 'Continuer'} leadingIcon={editing ? Store : undefined} haptic="medium" loading={saving} onPress={submit} fill />
       </BottomBar>
     </Screen>
   );
