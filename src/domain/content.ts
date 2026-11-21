@@ -144,15 +144,16 @@ export type Violation = 'phone' | 'link' | 'payment';
 /** Masks numbers and links; reports what was found. */
 export function moderateText(text: string): { text: string; violations: Violation[] } {
   const violations: Violation[] = [];
-  let out = text.replace(PHONE, (m) => {
+  // Links first: a wa.me/243… link must not be cut in two by the number mask.
+  let out = text.replace(LINK, () => {
+    if (!violations.includes('link')) violations.push('link');
+    return MASKED_LINK;
+  });
+  out = out.replace(PHONE, (m) => {
     // Prices and short numbers are fine: 7+ digits looks like a phone number.
     if (m.replace(/\D/g, '').length < 8) return m;
     if (!violations.includes('phone')) violations.push('phone');
     return MASKED_NUMBER;
-  });
-  out = out.replace(LINK, () => {
-    if (!violations.includes('link')) violations.push('link');
-    return MASKED_LINK;
   });
   if (OFF_APP_PAYMENT.test(out)) violations.push('payment');
   return { text: out, violations };

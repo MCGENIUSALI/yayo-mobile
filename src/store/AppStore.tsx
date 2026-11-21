@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import { AppState as RNAppState } from 'react-native';
 import { decidePayment } from '@/domain/paymentProvider';
 import { supabase } from '@/lib/supabase';
@@ -8,6 +8,9 @@ import { fetchCatalog } from './serverCatalog';
 import { loadSellerSpace } from './serverSeller';
 import { loadAddresses, loadOrders } from './serverOrders';
 import { loadAccount, signOutServer } from './serverAuth';
+import { loadContent } from './serverContent';
+import { isContentAction, planContentSync } from './contentSync';
+import { useToast } from '@/ui/Feedback';
 import { createInitialState, reducer, restoreState, type Action, type AppState } from '@/domain/state';
 
 const STORAGE_KEY = 'yayo/demo-state';
@@ -55,6 +58,17 @@ export function AppStoreProvider({ children, fallback }: { children: ReactNode; 
 
 function StoreRuntime({ initial, children }: { initial: AppState; children: ReactNode }) {
   const [state, rawDispatch] = useReducer(reducer, initial);
+  const stateRef = useRef(state);
+  const toast = useToast();
+  const accountId = state.auth.session?.accountId;
+  const catalog = useServerCatalog(rawDispatch);
+  const reloadContent = useServerContent(accountId, catalog.version, rawDispatch);
+  const sync = useRef({ toast, reloadContent });
+  // Actions come from taps, after the commit: they always see the state on screen.
+  useLayoutEffect(() => {
+    stateRef.current = state;
+    sync.current = { toast, reloadContent };
+  });
 
   const dispatch = useCallback((action: StoreAction) => {
     // Server mode: leaving the app also closes the Supabase session.
@@ -62,7 +76,26 @@ function StoreRuntime({ initial, children }: { initial: AppState; children: Reac
       signingOut = true;
       void signOutServer();
     }
-    rawDispatch({ ...action, at: (action as { at?: string }).at ?? new Date().toISOString() } as Action);
+    const timed = { ...action, at: (action as { at?: string }).at ?? new Date().toISOString() } as Action;
+    if (supabase && isContentAction(timed)) {
+      const before = stateRef.current;
+      const plan = planContentSync(timed, before);
+      // Shown after the screen's own confirmation, which it would otherwise cover.
+      const later = (message: string) => setTimeout(() => sync.current.toast(message, 'danger'), 60);
+      if (plan.kind === 'closed') return void later(plan.message);
+      if (plan.kind === 'write') {
+        // The app's rules answer first (same messages as the demo); only an accepted action is written.
+        const next = reducer(before, timed);
+        if (next.lastError && next.lastError.at === (timed as { at: string }).at && next.lastError !== before.lastError) return rawDispatch(timed);
+        rawDispatch(timed);
+        void plan.run().then((r) => {
+          if (!r.ok) later(r.message);
+          void sync.current.reloadContent();
+        });
+        return;
+      }
+    }
+    rawDispatch(timed);
   }, []);
 
   usePersistence(state);
@@ -72,9 +105,7 @@ function StoreRuntime({ initial, children }: { initial: AppState; children: Reac
   useRefundProvider(state, rawDispatch);
   useSupportAgent(state, rawDispatch);
 
-  const catalog = useServerCatalog(rawDispatch);
-  useServerSellerSpace(state.auth.session?.accountId, rawDispatch);
-  const accountId = state.auth.session?.accountId;
+  useServerSellerSpace(accountId, rawDispatch);
   const server = useServerOrders(accountId, accountId ? state.seller[accountId]?.shopId : undefined, rawDispatch);
   const value = useMemo(() => ({ state, dispatch, catalog, server }), [state, dispatch, catalog, server]);
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
@@ -304,6 +335,27 @@ function useServerOrders(accountId: string | undefined, shopId: string | undefin
   }, [accountId, reloadAddresses, reloadOrders]);
 
   return useMemo(() => ({ reloadOrders, reloadAddresses }), [reloadOrders, reloadAddresses]);
+}
+
+/**
+ * Server mode: posts, comments and the account's follows, likes and saves, read
+ * from Supabase at launch, at sign-in, each time the catalogue is re-read (return
+ * to the foreground) and after each write. Offline, the last loaded copy stays.
+ */
+function useServerContent(accountId: string | undefined, catalogVersion: number, dispatch: (a: Action) => void) {
+  const latest = useRef(0);
+  const reload = useCallback(async () => {
+    if (!supabase) return;
+    const ticket = ++latest.current;
+    const r = await loadContent(accountId).catch(() => null);
+    // An older read finishing late never overwrites a newer one.
+    if (r && ticket === latest.current) dispatch({ type: 'contentServer/loaded', ...r, at: new Date().toISOString() });
+  }, [accountId, dispatch]);
+  useEffect(() => {
+    // Products linked to posts come from the catalogue: read once it is there.
+    if (supabase && catalogVersion > 0) void reload();
+  }, [reload, catalogVersion]);
+  return reload;
 }
 
 /** Re-checks the session (idle/absolute expiry, suspension) at launch and on each return to the foreground. */

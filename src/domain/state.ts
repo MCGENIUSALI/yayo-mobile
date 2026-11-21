@@ -127,6 +127,8 @@ export type Action =
   | { type: 'addressServer/loaded'; accountId: string; book: AddressBook; selectId?: string; at: string }
   /** Server mode: every order the account may see (buyer and seller) replaces the local ones. */
   | { type: 'ordersServer/loaded'; orders: Record<string, Order>; checkouts: Record<string, Checkout>; activeCheckoutId?: string; at: string }
+  /** Server mode: the posts, comments and the account's follows, likes and saves replace the local ones. */
+  | { type: 'contentServer/loaded'; content: Omit<ContentState, 'seq'>; social?: Pick<SocialState, 'following' | 'liked' | 'saved' | 'folders'>; at: string }
   | { type: 'draft/update'; patch: Partial<CheckoutDraft> }
   | { type: 'social/toggle'; list: SocialToggle; id: string; at: string }
   | { type: 'social/hidePost'; postId: string }
@@ -381,6 +383,11 @@ export function reducer(state: AppState, action: Action): AppState {
       if (action.space) seller[action.accountId] = { ...action.space, readNotifications: state.seller[action.accountId]?.readNotifications ?? [] };
       else delete seller[action.accountId];
       return { ...state, seller, lastError: undefined };
+    }
+    case 'contentServer/loaded': {
+      // A guest has no follows, likes or saves on the server.
+      const mine = action.social ?? { following: [], liked: [], saved: [], folders: {} };
+      return { ...state, content: { ...action.content, seq: state.content.seq }, social: { ...state.social, ...mine }, lastError: undefined };
     }
     case 'addressServer/loaded': {
       const draft = action.selectId

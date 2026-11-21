@@ -260,6 +260,28 @@ select pg_temp.act(:B);
 do $$ begin assert (select count(*) from public.comments) = 1, 'l’auteur voit encore le sien'; end $$;
 reset role;
 
+-- ── Fil social en mode serveur (20261121010000) ──
+set role authenticated;
+select pg_temp.act(:S);
+-- La boutique relit sa publication à l'écriture.
+insert into public.posts (shop_id, kind, caption, media_paths, status)
+  values (public.my_shop_id(), 'photo', 'Appelle le 0812345678 ou va sur wa.me/243812345678', array[:S || '/posts/2.jpg'], 'published') returning id \gset post2_
+select pg_temp.ok((select caption from public.posts where id = :'post2_id') = 'Appelle le [Numéro masqué par YA YO] ou va sur [Lien masqué par YA YO]', 'légende filtrée par la base');
+insert into public.posts (shop_id, kind, caption, status) values (public.my_shop_id(), 'photo', 'brouillon 0812345678', 'draft') returning id \gset draft_
+select pg_temp.ok((select caption from public.posts where id = :'draft_id') = 'brouillon 0812345678', 'un brouillon garde la saisie');
+select pg_temp.act(:X);
+do $$ begin assert (select count(*) from public.posts where caption like 'brouillon%') = 0, 'brouillon invisible des autres'; end $$;
+select pg_temp.act(:B);
+insert into public.comments (post_id, author_id, text) values (:'post2_id', :B, 'Mon numéro : +243 81 234 5678') returning id \gset cm_
+select pg_temp.ok((select status from public.comment_feed where id = :'cm_id') = 'masked', 'commentaire avec numéro masqué');
+select pg_temp.ok((select text from public.comment_feed where id = :'cm_id') = 'Mon numéro : [Numéro masqué par YA YO]', 'numéro remplacé');
+insert into public.comments (post_id, author_id, text) values (:'post2_id', :B, 'Il reste du rouge ?');
+select pg_temp.act(:X);
+do $$ begin assert (select count(*) from public.comment_feed) = 1, 'les autres voient seulement le commentaire visible'; end $$;
+select pg_temp.act(:S);
+do $$ begin assert (select count(*) from public.comment_feed where post_id in (select id from public.posts where caption like 'Appelle%')) = 2, 'la boutique voit tout pour modérer'; end $$;
+reset role;
+
 -- ── Fichiers : chacun dans son dossier ──
 set role authenticated;
 select pg_temp.act(:B);
