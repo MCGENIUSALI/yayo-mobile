@@ -27,7 +27,7 @@ Comptes démo : acheteur `81 234 5678`, vendeuse `89 765 4321`, livreur `99 876 
 
 ## Aperçu web (Vercel)
 
-`vercel.json` construit la version web (`npx expo export -p web`, dossier `dist`). Importer le dépôt dans Vercel suffit : chaque branche reçoit un lien d'aperçu à ouvrir dans Safari ou Chrome. La version web sert à parcourir les écrans ; l'haptique et le comportement natif se vérifient dans Expo Go.
+`vercel.json` construit la version web en **mode serveur** (Supabase ; `npx expo export -p web`, dossier `dist`). C'est la façon gratuite de faire tester l'app : un lien à ouvrir dans Safari, sans compte Apple. Importer le dépôt dans Vercel suffit : chaque branche reçoit un lien d'aperçu à ouvrir dans Safari ou Chrome. La version web sert à parcourir les écrans ; l'haptique et le comportement natif se vérifient dans Expo Go.
 
 ## Vérifier
 

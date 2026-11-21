@@ -303,6 +303,12 @@ export const demoCourier: Courier = { name: 'Patrick K.', initials: 'PK', vehicl
  */
 let version = 0;
 
+/**
+ * The demo catalogue as shipped, kept apart from `products` (which server mode
+ * empties): the seeded demo accounts (seller, courier) are built from it.
+ */
+export const demoProducts: Readonly<Record<string, Product>> = { ...products };
+
 export function replaceCatalog(next: { shops: Record<string, Shop>; products: Record<string, Product> }): number {
   for (const k of Object.keys(shops)) delete shops[k];
   for (const k of Object.keys(products)) delete products[k];

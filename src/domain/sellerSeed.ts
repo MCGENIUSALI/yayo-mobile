@@ -1,5 +1,5 @@
 import { DEMO_SELLER_ID } from './auth';
-import { products } from './catalog';
+import { demoProducts as products } from './catalog';
 import { receiptCodeFor } from './orderMachine';
 import type { SellerProduct, SellerSpace } from './seller';
 import type { Checkout, Order, OrderLine } from './types';

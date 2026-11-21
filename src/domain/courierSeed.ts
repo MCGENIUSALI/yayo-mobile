@@ -1,5 +1,5 @@
 import { DEMO_COURIER_ID, DEMO_PHONE_COURIER } from './auth';
-import { products } from './catalog';
+import { demoProducts as products } from './catalog';
 import type { CourierSpace } from './courier';
 import { receiptCodeFor } from './orderMachine';
 import type { Checkout, Courier, Order, OrderLine } from './types';
