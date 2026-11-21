@@ -48,6 +48,10 @@ insert into public.product_variants (product_id, color) select id, 'Bleu' from p
 select pg_temp.expect($$update public.products set rating = 5$$, '42501');
 -- Ce que fait l'app vendeur (V1, V9, V10) : catégorie modifiable, brouillon sans prix, photos.
 update public.shops set category = 'Électronique et audio', pickup_address = '45, bd du 30 Juin' where owner_id = :S;
+-- V10 comme l'app : insert puis relecture de l'id (PostgREST .select('id')), en brouillon et en ligne, boutique pas encore validée.
+with p as (insert into public.products (shop_id, name, price, compare_at, status, stock) values (public.my_shop_id(), 'Brouillon relu', 28000, 30000, 'draft', 2) returning id) select pg_temp.ok((select count(*) from p) = 1, 'brouillon relu après insert');
+with p as (insert into public.products (shop_id, name, price, status, stock) values (public.my_shop_id(), 'Publié relu', 28000, 'active', 2) returning id) select pg_temp.ok((select count(*) from p) = 1, 'produit publié relu après insert');
+delete from public.products where name in ('Brouillon relu', 'Publié relu');
 insert into public.products (shop_id, name, price, status, stock) select public.my_shop_id(), 'Brouillon sans prix', 0, 'draft', 0;
 select pg_temp.expect($$insert into public.products (shop_id, name, price, status) select public.my_shop_id(), 'Publié sans prix', 0, 'active'$$, '23514');
 insert into public.product_photos (product_id, position, path) select id, 0, :'S' || '/products/' || id || '/a.jpg' from public.products where name = 'Brouillon sans prix';
