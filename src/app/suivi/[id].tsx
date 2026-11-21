@@ -1,6 +1,6 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ban, Bike, MessageCircle, PackageCheck, Phone, Share2, ShieldCheck, Store, TriangleAlert, Truck, Undo2 } from 'lucide-react-native';
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { ScrollView, Share, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { getShop } from '@/domain/catalog';
@@ -11,6 +11,7 @@ import { canCancel, canDispute } from '@/domain/orderMachine';
 import type { Order } from '@/domain/types';
 import { incidentLabel } from '@/domain/courier';
 import { buildTimeline, etaLabel, showReceiptCode, type StepKey } from '@/domain/tracking';
+import { isServerMode } from '@/lib/supabase';
 import { useStore } from '@/store/AppStore';
 import { useOpenWithAccount } from '@/store/useRequireAccount';
 import { color, space } from '@/theme/tokens';
@@ -35,10 +36,16 @@ const STEP_ICON: Record<StepKey, typeof Truck> = {
 /** D2 · Suivi de livraison — payment and delivery shown in sync (§9). */
 export default function TrackingScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { state } = useStore();
+  const { state, server } = useStore();
   const toast = useToast();
   const { width } = useWindowDimensions();
   const order = id ? state.orders[id] : undefined;
+  // Server mode: the order moves on other phones (seller, courier); it is re-read when the screen opens.
+  useFocusEffect(
+    useCallback(() => {
+      void server.reloadOrders();
+    }, [server]),
+  );
   const timeline = useMemo(() => (order ? buildTimeline(order) : []), [order]);
   const enter = [useEnter(0), useEnter(1), useEnter(2), useEnter(3)];
 
@@ -114,7 +121,7 @@ export default function TrackingScreen() {
             )}
           </Animated.View>
 
-          {showReceiptCode(order) ? (
+          {showReceiptCode(order) && order.receiptCode ? (
             <Animated.View entering={enter[2]}>
               <DeliveryCode code={order.receiptCode} />
             </Animated.View>
@@ -196,7 +203,7 @@ export default function TrackingScreen() {
             </Text>
           ) : null}
 
-          <DemoConsole order={order} />
+          {isServerMode() ? null : <DemoConsole order={order} />}
         </View>
       </ScrollView>
     </Screen>

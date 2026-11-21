@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { replaceCatalog } from '@/domain/catalog';
 import { fetchCatalog } from './serverCatalog';
 import { loadSellerSpace } from './serverSeller';
+import { loadAddresses, loadOrders } from './serverOrders';
 import { loadAccount, signOutServer } from './serverAuth';
 import { createInitialState, reducer, restoreState, type Action, type AppState } from '@/domain/state';
 
@@ -22,6 +23,8 @@ interface Store {
   dispatch: (action: StoreAction) => void;
   /** Changes each time the catalogue is replaced (server mode), so screens reading it re-render. */
   catalog: { status: CatalogStatus; version: number; message?: string; reload: () => void };
+  /** Server mode: re-reads the account's orders and addresses (after a write, or pull-to-refresh). Demo: no-op. */
+  server: { reloadOrders: (activeCheckoutId?: string) => Promise<void>; reloadAddresses: (selectId?: string) => Promise<void> };
 }
 
 const StoreContext = createContext<Store | null>(null);
@@ -71,7 +74,9 @@ function StoreRuntime({ initial, children }: { initial: AppState; children: Reac
 
   const catalog = useServerCatalog(rawDispatch);
   useServerSellerSpace(state.auth.session?.accountId, rawDispatch);
-  const value = useMemo(() => ({ state, dispatch, catalog }), [state, dispatch, catalog]);
+  const accountId = state.auth.session?.accountId;
+  const server = useServerOrders(accountId, accountId ? state.seller[accountId]?.shopId : undefined, rawDispatch);
+  const value = useMemo(() => ({ state, dispatch, catalog, server }), [state, dispatch, catalog, server]);
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
 
@@ -263,6 +268,42 @@ function useServerSellerSpace(accountId: string | undefined, dispatch: (a: Actio
       cancelled = true;
     };
   }, [accountId, dispatch]);
+}
+
+/**
+ * Server mode: the account's addresses and orders (as buyer and as seller) are
+ * read from Supabase once signed in, on each return to the foreground and after
+ * each write. Offline, the last loaded copy stays on screen.
+ */
+function useServerOrders(accountId: string | undefined, shopId: string | undefined, dispatch: (a: Action) => void): Store['server'] {
+  const reloadOrders = useCallback(
+    async (activeCheckoutId?: string) => {
+      if (!supabase || !accountId) return;
+      const r = await loadOrders(accountId, shopId).catch(() => null);
+      if (r) dispatch({ type: 'ordersServer/loaded', ...r, activeCheckoutId, at: new Date().toISOString() });
+    },
+    [accountId, shopId, dispatch],
+  );
+  const reloadAddresses = useCallback(
+    async (selectId?: string) => {
+      if (!supabase || !accountId) return;
+      const book = await loadAddresses(accountId).catch(() => null);
+      if (book) dispatch({ type: 'addressServer/loaded', accountId, book, selectId, at: new Date().toISOString() });
+    },
+    [accountId, dispatch],
+  );
+
+  useEffect(() => {
+    if (!supabase || !accountId) return;
+    void reloadAddresses();
+    void reloadOrders();
+    const sub = RNAppState.addEventListener('change', (st) => {
+      if (st === 'active') void reloadOrders();
+    });
+    return () => sub.remove();
+  }, [accountId, reloadAddresses, reloadOrders]);
+
+  return useMemo(() => ({ reloadOrders, reloadAddresses }), [reloadOrders, reloadAddresses]);
 }
 
 /** Re-checks the session (idle/absolute expiry, suspension) at launch and on each return to the foreground. */

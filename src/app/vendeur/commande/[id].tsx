@@ -24,7 +24,7 @@ const CURRENT = { new: 1, preparing: 1, ready: 3, handed_over: 4 } as const;
 /** V6 · Détail commande (seller). */
 export default function SellerOrderDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { orders, shop, dispatch, state } = useSeller();
+  const { orders, shop, state } = useSeller();
   const sellerActions = useSellerActions();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
@@ -55,17 +55,23 @@ export default function SellerOrderDetail() {
     { title: 'Remise au livreur', description: 'Avec le code de remise', icon: PackageCheck },
   ];
 
-  const act = (event: 'seller.start_preparing' | 'seller.mark_ready') => {
+  const act = async (event: 'seller.start_preparing' | 'seller.mark_ready') => {
+    if (busy) return;
     setBusy(true);
-    setTimeout(() => {
-      dispatch({ type: 'seller/orderEvent', orderId: order.id, event: { type: event } });
-      setBusy(false);
-      haptic('success');
-      if (event === 'seller.mark_ready') {
-        toast('Livreur assigné : il arrive pour la collecte.', 'success');
-        router.replace({ pathname: '/vendeur/remise/[id]', params: { id: order.id } });
-      }
-    }, 450);
+    if (!sellerActions.server) await new Promise((r) => setTimeout(r, 450));
+    const r = await sellerActions.orderEvent(order, event);
+    setBusy(false);
+    if (!r.ok) {
+      haptic('warning');
+      toast(r.message, 'danger');
+      return;
+    }
+    haptic('success');
+    if (event === 'seller.mark_ready') {
+      // Server mode: a courier is assigned only if one is online in the zone.
+      toast(sellerActions.server ? 'Commande prête : YA YO prévient un livreur.' : 'Livreur assigné : il arrive pour la collecte.', 'success');
+      router.replace({ pathname: '/vendeur/remise/[id]', params: { id: order.id } });
+    }
   };
 
   const ownProducts = order.lines.map((l) => l.productId).filter((pid) => shop.products.some((p) => p.id === pid));

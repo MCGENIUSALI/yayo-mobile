@@ -6,6 +6,7 @@ import { MAX_ADDRESSES } from '@/domain/account';
 import { buyerAddresses, defaultAddressId } from '@/domain/state';
 import type { Address } from '@/domain/types';
 import { useStore } from '@/store/AppStore';
+import { useAddressActions } from '@/store/useAddresses';
 import { pressScale } from '@/theme/motion';
 import { color, radius, space } from '@/theme/tokens';
 import { Button } from '@/ui/Button';
@@ -20,7 +21,8 @@ import { TopAppBar } from '@/ui/TopAppBar';
 
 /** D13 · Mes adresses: the radio picks the default address, the card opens D15. */
 export default function AddressesScreen() {
-  const { state, dispatch } = useStore();
+  const { state } = useStore();
+  const actions = useAddressActions();
   const toast = useToast();
   const list = useMemo(() => buyerAddresses(state), [state]);
   const current = defaultAddressId(state);
@@ -28,8 +30,7 @@ export default function AddressesScreen() {
 
   const makeDefault = (a: Address) => {
     if (a.id === current) return;
-    dispatch({ type: 'address/setDefault', id: a.id, at: new Date().toISOString() });
-    toast(`${a.label} est ton adresse par défaut.`, 'success');
+    void actions.setDefault(a.id).then((r) => toast(r.ok ? `${a.label} est ton adresse par défaut.` : r.message, r.ok ? 'success' : 'danger'));
   };
 
   return (

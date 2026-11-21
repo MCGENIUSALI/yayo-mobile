@@ -175,6 +175,8 @@ export interface OrderMilestones {
  */
 export interface Order {
   id: string;
+  /** Server mode: the row id in Supabase (`id` stays the « YY-24880 » shown everywhere). */
+  serverId?: string;
   checkoutId: string;
   shopId: string;
   lines: OrderLine[];
@@ -187,6 +189,8 @@ export interface Order {
   seller: SellerStatus;
   delivery: DeliveryStatus;
   receiptCode: string;
+  /** Server mode: V7 code the seller reads to the courier (demo: pickupCodeFor). */
+  pickupCode?: string;
   addressId: string;
   slotId: string;
   courierNote?: string;

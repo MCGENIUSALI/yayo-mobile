@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { plural } from '@/domain/format';
 import { pickupCodeFor } from '@/domain/seller';
+import { isServerMode } from '@/lib/supabase';
 import { useSeller } from '@/store/useSeller';
 import { color, radius, space } from '@/theme/tokens';
 import { Button } from '@/ui/Button';
@@ -18,7 +19,7 @@ import { TopAppBar } from '@/ui/TopAppBar';
 /** V7 · Remise au livreur: the courier types the seller's code to confirm the pick-up. */
 export default function HandOver() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { orders, dispatch } = useSeller();
+  const { orders, dispatch, server } = useSeller();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const order = orders.find((o) => o.id === id);
@@ -41,7 +42,7 @@ export default function HandOver() {
     );
   }
 
-  const code = pickupCodeFor(order.id);
+  const code = order.pickupCode ?? pickupCodeFor(order.id);
   const items = order.lines.reduce((n, l) => n + l.qty, 0);
   const done = order.seller === 'handed_over';
 
@@ -107,30 +108,46 @@ export default function HandOver() {
 
         <Alert tone="info" icon={PackageOpen} title="Vérifie avant de remettre" body={`Colis fermé, étiquette #${order.id} collée, ${plural(items, 'article', 'articles')}.`} />
 
-        <View style={styles.demo}>
-          <FlaskConical size={16} color={color.icon.secondary} strokeWidth={2} />
-          <Text variant="bodyS" color={color.text.secondary} style={{ flex: 1 }}>
-            Démo : le bouton ci-dessous joue le livreur qui saisit le code dans son app.
-          </Text>
-        </View>
+        {isServerMode() ? null : (
+          <View style={styles.demo}>
+            <FlaskConical size={16} color={color.icon.secondary} strokeWidth={2} />
+            <Text variant="bodyS" color={color.text.secondary} style={{ flex: 1 }}>
+              Démo : le bouton ci-dessous joue le livreur qui saisit le code dans son app.
+            </Text>
+          </View>
+        )}
       </Content>
       <BottomBar>
-        <Button
-          label="Le livreur a récupéré le colis"
-          variant="outline"
-          haptic="success"
-          loading={busy}
-          onPress={() => {
-            setBusy(true);
-            setTimeout(() => {
-              dispatch({ type: 'seller/demoCourierPickup', orderId: order.id });
-              setBusy(false);
-              haptic('success');
-              toast('Collecte confirmée par le livreur.', 'success');
-            }, 600);
-          }}
-          fill
-        />
+        {isServerMode() ? (
+          // The courier types the code in his own app; this re-reads the order.
+          <Button
+            label="Actualiser"
+            variant="outline"
+            loading={busy}
+            onPress={() => {
+              setBusy(true);
+              void server.reloadOrders().finally(() => setBusy(false));
+            }}
+            fill
+          />
+        ) : (
+          <Button
+            label="Le livreur a récupéré le colis"
+            variant="outline"
+            haptic="success"
+            loading={busy}
+            onPress={() => {
+              setBusy(true);
+              setTimeout(() => {
+                dispatch({ type: 'seller/demoCourierPickup', orderId: order.id });
+                setBusy(false);
+                haptic('success');
+                toast('Collecte confirmée par le livreur.', 'success');
+              }, 600);
+            }}
+            fill
+          />
+        )}
       </BottomBar>
     </Screen>
   );

@@ -17,6 +17,7 @@ import {
   submitShopKyc,
   type SellerWrite,
 } from './serverSeller';
+import { sellerMarkReady, sellerStartPreparing } from './serverOrders';
 
 /** Signed-in seller: account, shop space (once V1 is saved) and the shop's paid orders. */
 export function useSeller() {
@@ -30,14 +31,17 @@ export function useSeller() {
 
 /** V4 / V5 order cards: tap opens the order; "Préparer la commande" also starts the preparation. */
 export function useSellerOrderNav() {
-  const { dispatch } = useStore();
+  const { dispatch, server } = useStore();
   const open = (o: Order) =>
     o.seller === 'ready'
       ? router.push({ pathname: '/vendeur/remise/[id]', params: { id: o.id } })
       : router.push({ pathname: '/vendeur/commande/[id]', params: { id: o.id } });
   const act = (o: Order) => {
     if (o.seller === 'new') {
-      dispatch({ type: 'seller/orderEvent', orderId: o.id, event: { type: 'seller.start_preparing' } });
+      if (isServerMode() && o.serverId) {
+        // The detail screen shows the result once the server has answered.
+        void sellerStartPreparing(o.serverId).then(() => server.reloadOrders());
+      } else dispatch({ type: 'seller/orderEvent', orderId: o.id, event: { type: 'seller.start_preparing' } });
       haptic('success');
     }
     open(o);
@@ -53,7 +57,7 @@ export type SellerActionResult = { ok: true; id?: string } | { ok: false; messag
  * the screen waits for the answer and keeps the form on a failure.
  */
 export function useSellerActions() {
-  const { state, dispatch, catalog } = useStore();
+  const { state, dispatch, catalog, server } = useStore();
   const account = currentAccount(state.auth);
   const space = activeSellerSpace(state);
 
@@ -95,6 +99,15 @@ export function useSellerActions() {
       !isServerMode() ? demo({ type: 'seller/setOnline', id: product.id, online }) : account ? afterServer(await setSellerProductOnline(account.id, product, online)) : noAccount,
     deleteProduct: async (id: string) =>
       !isServerMode() ? demo({ type: 'seller/deleteProduct', id }) : account ? afterServer(await deleteSellerProduct(account.id, id)) : noAccount,
+    /** V5 / V6: « Préparer la commande », « Marquer comme prête pour collecte » (the server then looks for a courier). */
+    orderEvent: async (order: Order, event: 'seller.start_preparing' | 'seller.mark_ready'): Promise<SellerActionResult> => {
+      if (!isServerMode()) return demo({ type: 'seller/orderEvent', orderId: order.id, event: { type: event } });
+      if (!order.serverId) return { ok: false, message: 'Commande introuvable sur le serveur.' };
+      const r = event === 'seller.start_preparing' ? await sellerStartPreparing(order.serverId) : await sellerMarkReady(order.serverId);
+      if (!r.ok) return { ok: false, message: r.message };
+      await server.reloadOrders();
+      return { ok: true };
+    },
     markOutOfStock: async (productIds: string[]) =>
       !isServerMode() ? demo({ type: 'seller/markOutOfStock', productIds }) : account ? afterServer(await markSellerOutOfStock(account.id, productIds)) : noAccount,
   };

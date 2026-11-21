@@ -6,6 +6,7 @@ import { addressError, type AddressField, type AddressInput } from '@/domain/acc
 import { CITIES, currentAccount } from '@/domain/auth';
 import { buyerAddresses, defaultAddressId } from '@/domain/state';
 import { useStore } from '@/store/AppStore';
+import { useAddressActions } from '@/store/useAddresses';
 import { color, space } from '@/theme/tokens';
 import { Button } from '@/ui/Button';
 import { Checkbox, SelectField } from '@/ui/Auth';
@@ -22,8 +23,10 @@ const localPhone = (p?: string) => (p ?? '').replace(/^\+?243\s?/, '');
 /** D14 · Nouvelle adresse, D15 · Modifier l’adresse (with `id`). */
 export default function AddressFormScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
-  const { state, dispatch } = useStore();
+  const { state } = useStore();
+  const actions = useAddressActions();
   const toast = useToast();
+  const [busy, setBusy] = useState(false);
   const account = currentAccount(state.auth);
   const existing = useMemo(() => (id ? buyerAddresses(state).find((a) => a.id === id) : undefined), [id, state]);
   const isDefault = !!existing && defaultAddressId(state) === existing.id;
@@ -58,21 +61,34 @@ export default function AddressFormScreen() {
     );
   }
 
-  const save = () => {
+  const save = async () => {
+    if (busy) return;
     const err = addressError(form);
     if (err) {
       setError(err);
       return;
     }
-    dispatch({ type: 'address/save', id: existing?.id, input: form, makeDefault, at: new Date().toISOString() });
+    setBusy(true);
+    const r = await actions.save(existing?.id, form, makeDefault);
+    setBusy(false);
+    if (!r.ok) {
+      toast(r.message, 'danger');
+      return;
+    }
     toast(existing ? 'Adresse mise à jour.' : 'Adresse enregistrée.', 'success');
     router.back();
   };
 
-  const remove = () => {
-    if (!existing) return;
+  const remove = async () => {
+    if (!existing || busy) return;
     setConfirmDelete(false);
-    dispatch({ type: 'address/delete', id: existing.id, at: new Date().toISOString() });
+    setBusy(true);
+    const r = await actions.remove(existing.id);
+    setBusy(false);
+    if (!r.ok) {
+      toast(r.message, 'danger');
+      return;
+    }
     toast('Adresse supprimée.');
     router.back();
   };
@@ -153,7 +169,7 @@ export default function AddressFormScreen() {
         )}
       </Content>
       <BottomBar>
-        <Button label={existing ? 'Enregistrer les modifications' : 'Enregistrer l’adresse'} haptic="medium" onPress={save} fill />
+        <Button label={existing ? 'Enregistrer les modifications' : 'Enregistrer l’adresse'} haptic="medium" loading={busy} onPress={save} fill />
       </BottomBar>
 
       <Sheet

@@ -123,6 +123,10 @@ export type Action =
   | { type: 'catalog/loaded'; at: string }
   /** Server mode: the seller space as stored by Supabase (null: no shop yet). Read notifications stay on the device. */
   | { type: 'sellerServer/loaded'; accountId: string; space: SellerSpace | null; at: string }
+  /** Server mode: the account's delivery addresses as stored by Supabase. */
+  | { type: 'addressServer/loaded'; accountId: string; book: AddressBook; selectId?: string; at: string }
+  /** Server mode: every order the account may see (buyer and seller) replaces the local ones. */
+  | { type: 'ordersServer/loaded'; orders: Record<string, Order>; checkouts: Record<string, Checkout>; activeCheckoutId?: string; at: string }
   | { type: 'draft/update'; patch: Partial<CheckoutDraft> }
   | { type: 'social/toggle'; list: SocialToggle; id: string; at: string }
   | { type: 'social/hidePost'; postId: string }
@@ -377,6 +381,33 @@ export function reducer(state: AppState, action: Action): AppState {
       if (action.space) seller[action.accountId] = { ...action.space, readNotifications: state.seller[action.accountId]?.readNotifications ?? [] };
       else delete seller[action.accountId];
       return { ...state, seller, lastError: undefined };
+    }
+    case 'addressServer/loaded': {
+      const draft = action.selectId
+        ? { ...state.draft, addressId: action.selectId }
+        : action.book.items.some((a) => a.id === state.draft.addressId)
+          ? state.draft
+          : { ...state.draft, addressId: action.book.defaultId ?? '' };
+      return { ...state, addressBook: { ...state.addressBook, [action.accountId]: action.book }, draft, lastError: undefined };
+    }
+    case 'ordersServer/loaded': {
+      let { cart, promoCode } = state;
+      if (action.activeCheckoutId) {
+        // The checkout went through: what it bought leaves the cart (same as confirmCash).
+        const ck = action.checkouts[action.activeCheckoutId];
+        const bought = new Set(ck?.orderIds.flatMap((id) => action.orders[id]?.lines.map((l) => `${l.productId}|${l.color}`) ?? []) ?? []);
+        cart = cart.filter((l) => !bought.has(`${l.productId}|${l.color}`));
+        promoCode = undefined;
+      }
+      return {
+        ...state,
+        orders: action.orders,
+        checkouts: action.checkouts,
+        cart,
+        promoCode,
+        activeCheckoutId: action.activeCheckoutId ?? state.activeCheckoutId,
+        lastError: undefined,
+      };
     }
     case 'catalog/loaded': {
       const known = (id: string) => !!catalogProducts[id];

@@ -6,7 +6,9 @@ import { CANCEL_REASONS } from '@/domain/account';
 import { formatFC } from '@/domain/money';
 import { canCancel } from '@/domain/orderMachine';
 import type { CancelReason } from '@/domain/types';
+import { isServerMode } from '@/lib/supabase';
 import { useStore } from '@/store/AppStore';
+import { buyerCancel } from '@/store/serverOrders';
 import { color, space } from '@/theme/tokens';
 import { Button } from '@/ui/Button';
 import { Alert, useToast } from '@/ui/Feedback';
@@ -18,11 +20,12 @@ import { TopAppBar } from '@/ui/TopAppBar';
 /** D18 · Annuler la commande: allowed until the seller hands the parcel to the courier. */
 export default function CancelOrderScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { state, dispatch } = useStore();
+  const { state, dispatch, server } = useStore();
   const toast = useToast();
   const order = id ? state.orders[id] : undefined;
   const [reason, setReason] = useState<CancelReason | null>(null);
   const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
 
   if (!order || !canCancel(order)) {
     return (
@@ -49,8 +52,22 @@ export default function CancelOrderScreen() {
   const checkout = state.checkouts[order.checkoutId];
   const destination = order.method === 'card' ? 'ta carte bancaire' : checkout?.operator ? `ton compte ${checkout.operator}` : 'ton compte Mobile Money';
 
-  const confirm = () => {
-    if (!reason) return;
+  const confirm = async () => {
+    if (!reason || busy) return;
+    if (isServerMode()) {
+      if (!order.serverId) return;
+      setBusy(true);
+      const r = await buyerCancel(order.serverId, reason, reason === 'other' ? note : undefined);
+      setBusy(false);
+      if (!r.ok) {
+        toast(r.message, 'danger');
+        return;
+      }
+      toast('Commande annulée.', 'success');
+      router.back();
+      void server.reloadOrders();
+      return;
+    }
     const at = new Date().toISOString();
     dispatch({ type: 'order/cancel', orderId: order.id, reason, note: reason === 'other' ? note : undefined, at });
     toast('Commande annulée.', 'success');
@@ -93,7 +110,7 @@ export default function CancelOrderScreen() {
         />
       </Content>
       <BottomBar>
-        <Button label="Annuler la commande" variant="destructive" haptic="warning" disabled={!reason} onPress={confirm} fill />
+        <Button label="Annuler la commande" variant="destructive" haptic="warning" disabled={!reason} loading={busy} onPress={confirm} fill />
         <Button label="Garder ma commande" variant="ghost" onPress={() => router.back()} fill />
       </BottomBar>
     </Screen>
