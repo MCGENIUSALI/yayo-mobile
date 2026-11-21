@@ -53,6 +53,10 @@ select pg_temp.expect($$insert into public.products (shop_id, name, price, statu
 insert into public.product_photos (product_id, position, path) select id, 0, :'S' || '/products/' || id || '/a.jpg' from public.products where name = 'Brouillon sans prix';
 insert into public.product_variants (product_id, color) select id, '' from public.products where name = 'Brouillon sans prix';
 delete from public.products where name = 'Brouillon sans prix';
+-- V2 comme l'app : premier envoi (insert), puis renvoi (update) ; l'upsert de PostgREST est refusé (colonnes).
+insert into public.shop_kyc (shop_id, id_document_path, selfie_path) values (public.my_shop_id(), :'S' || '/kyc/piece.jpg', :'S' || '/kyc/selfie.jpg');
+update public.shop_kyc set id_document_path = :'S' || '/kyc/piece-2.jpg', submitted_at = now() where shop_id = public.my_shop_id();
+select pg_temp.expect($$insert into public.shop_kyc (shop_id, id_document_path, selfie_path, submitted_at) values (public.my_shop_id(), 'a', 'b', now())$$, '42501');
 select pg_temp.act(:B);
 do $$ begin assert (select count(*) from public.products) = 0, 'produit d’une boutique non validée visible'; end $$;
 reset role;

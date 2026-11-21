@@ -284,9 +284,12 @@ export async function submitShopKyc(accountId: string, kyc: Kyc, c?: SupabaseCli
     const phone = normalizePhone(kyc.payoutPhone)!;
     const { error: shopErr } = await db.from('shops').update({ payout_phone: phone }).eq('id', shop.data.id);
     if (shopErr) return SERVER;
-    const { error } = await db
-      .from('shop_kyc')
-      .upsert({ shop_id: shop.data.id, id_document_path: id, selfie_path: selfie, submitted_at: new Date().toISOString() }, { onConflict: 'shop_id' });
+    // No upsert: the seller may insert (shop_id, files) and later update (files, submitted_at), nothing more (grants).
+    const sent = await db.from('shop_kyc').select('shop_id').eq('shop_id', shop.data.id).maybeSingle();
+    if (sent.error) return SERVER;
+    const { error } = sent.data
+      ? await db.from('shop_kyc').update({ id_document_path: id, selfie_path: selfie, submitted_at: new Date().toISOString() }).eq('shop_id', shop.data.id)
+      : await db.from('shop_kyc').insert({ shop_id: shop.data.id, id_document_path: id, selfie_path: selfie });
     if (error) return SERVER;
     return reload(accountId, db);
   } catch {
