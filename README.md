@@ -138,3 +138,22 @@ Ce qui passe par le serveur en mode serveur :
 - **Suivi et commandes vendeur** (D1, D2, D18, V4–V7) : les commandes sont relues au lancement, au retour dans l'app et à l'ouverture du suivi. Le code de réception vient du serveur (acheteur seulement), le code de remise aussi (vendeur seulement). « Préparer », « Prête pour collecte » et « Annuler » passent par les fonctions de la base ; la console de démo du suivi et le bouton « Le livreur a récupéré le colis » sont masqués. Un livreur n'est assigné que s'il y en a un en ligne dans la zone.
 
 Tout le reste (paiement Mobile Money, app livreur, litiges, fil, contenus) reste en démo pour l'instant. En mode serveur, les comptes de démo (81 234 5678…) ne servent plus : on se connecte avec son vrai numéro ou son e-mail. La suppression de compte n'est pas encore ouverte côté serveur.
+
+## Version iPhone à installer (TestFlight)
+
+`eas.json` prépare deux compilations, toutes deux en mode serveur (Supabase) :
+
+- `production` : pour **TestFlight**. Les testeurs installent l'app TestFlight d'Apple, puis YA YO par un lien d'invitation (jusqu'à 10 000 testeurs, sans connaître leur iPhone).
+- `preview` : installation directe (« ad hoc ») sur des iPhone enregistrés un par un.
+
+Il faut un compte **Apple Developer Program** (99 $ par an) et un compte Expo.
+
+```
+npm install -g eas-cli
+eas login
+eas init                                   # relie le projet à ton compte Expo (une fois)
+eas build -p ios --profile production      # compilation dans le cloud Expo (~20 min)
+eas submit -p ios --latest                 # envoi vers App Store Connect / TestFlight
+```
+
+`eas build` demande ton identifiant Apple et crée lui-même les certificats. Ensuite, dans App Store Connect → l'app → TestFlight : ajoute un groupe de **testeurs externes**, active le **lien public**, puis partage-le. Le premier envoi aux testeurs externes passe une vérification Apple (souvent moins de 24 h).
