@@ -1,4 +1,4 @@
-import { describe, expect, it, jest } from '@jest/globals';
+import { afterAll, describe, expect, it, jest } from '@jest/globals';
 import { createInitialState, reducer } from '@/domain/state';
 import { planContentSync } from '../contentSync';
 import { savePost, toComments, toContentItem, type CommentRow, type PostRow } from '../serverContent';
@@ -94,6 +94,45 @@ describe('savePost', () => {
         { post_id: 'p9', product_id: 'pr1', position: 1 },
       ],
     ]);
+  });
+});
+
+describe('video cover', () => {
+  const draft = { kind: 'video' as const, caption: 'Défilé', media: [], video: 'file:///clip.mp4', productIds: ['pr1'], allowComments: true, allowShare: true, buyButton: true };
+  const fakeDb = (inserts: unknown[]) =>
+    ({
+      storage: { from: () => ({ upload: async (path: string) => (inserts.push(['upload', path]), { error: null }) }) },
+      from: (table: string) => ({
+        insert: (v: unknown) => {
+          inserts.push([table, v]);
+          return table === 'posts' ? { select: () => ({ single: async () => ({ data: { id: 'p9' }, error: null }) }) } : Promise.resolve({ error: null });
+        },
+      }),
+    }) as never;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (u: string) => ({ headers: { get: () => (u.endsWith('.mp4') ? 'video/mp4' : 'image/jpeg') }, arrayBuffer: async () => new ArrayBuffer(4) })) as never;
+  afterAll(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  it('a phone video gets a cover taken from the clip, shown in the home card', async () => {
+    const inserts: unknown[] = [];
+    const r = await savePost({ accountId: 'u1', shopId: 's1', draft, mode: 'publish', makeCover: async () => 'file:///cover.jpg' }, fakeDb(inserts));
+    expect(r).toEqual({ ok: true });
+    const post = (inserts.find((x) => (x as [string])[0] === 'posts') as [string, Record<string, unknown>])[1];
+    expect(post.video_path).toMatch(/^u1\/posts\/.+-video\.mp4$/);
+    expect(post.poster_path).toMatch(/^u1\/posts\/.+-cover\.jpg$/);
+    const item = toContentItem({ ...row, kind: 'video', media_paths: [], video_path: 'u1/v.mp4', poster_path: 'u1/c.jpg' }, undefined, { liked: false, saved: false }, url);
+    expect(item.media).toEqual([url('u1/c.jpg')]);
+    expect(item.poster).toBe(url('u1/c.jpg'));
+  });
+
+  it('no cover possible: the video is published anyway', async () => {
+    const inserts: unknown[] = [];
+    const r = await savePost({ accountId: 'u1', shopId: 's1', draft, mode: 'publish', makeCover: async () => null }, fakeDb(inserts));
+    expect(r).toEqual({ ok: true });
+    const post = (inserts.find((x) => (x as [string])[0] === 'posts') as [string, Record<string, unknown>])[1];
+    expect(post.poster_path).toBeNull();
   });
 });
 

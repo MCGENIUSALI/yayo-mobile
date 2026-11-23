@@ -88,7 +88,8 @@ export function toContentItem(r: PostRow, counts: CountRow | undefined, mine: { 
     kind: r.kind === 'video' ? 'video' : 'photos',
     status,
     caption: r.caption,
-    media: r.media_paths.map(publicUrl),
+    // A video's cover doubles as its image in the home feed card, as the demo clips do.
+    media: r.media_paths.length ? r.media_paths.map(publicUrl) : r.poster_path ? [publicUrl(r.poster_path)] : [],
     video: r.video_path ? publicUrl(r.video_path) : undefined,
     poster: r.poster_path ? publicUrl(r.poster_path) : undefined,
     productIds: [...r.post_products].sort((a, b) => a.position - b.position).map((p) => p.product_id),
@@ -236,7 +237,11 @@ export interface SavePostInput {
   draft: ContentDraft;
   mode: 'draft' | 'publish' | 'schedule';
   scheduledAt?: string;
+  /** Video cover maker (tests); by default an image taken from the clip. */
+  makeCover?: (videoUri: string) => Promise<string | null>;
 }
+
+const defaultCover = async (uri: string) => (await import('@/ui/videoCover')).videoCover(uri);
 
 /** Photos (carousel) or a video, with their linked products in order. Stories and lives are not on the server yet. */
 export async function savePost(input: SavePostInput, c?: SupabaseClient | null): Promise<ContentWrite> {
@@ -252,10 +257,18 @@ export async function savePost(input: SavePostInput, c?: SupabaseClient | null):
       media.push(p);
     }
     let video: string | null = null;
+    let poster: string | null | undefined;
     if (d.kind === 'video' && d.video !== undefined) {
       const v = await place(db, `${base}-video`, d.video, true);
       if (isFailure(v)) return v;
       video = v;
+      // The home feed card (B1) shows a cover: taken from the clip when the seller gave none.
+      // An edit keeps the cover already online; a cover that cannot be made never blocks the post.
+      if (!d.media.length && typeof d.video === 'string' && !mediaPath(d.video)) {
+        const cover = await (input.makeCover ?? defaultCover)(d.video);
+        const up = cover ? await place(db, `${base}-cover`, cover) : null;
+        poster = up && !isFailure(up) ? up : null;
+      }
     }
     const status = input.mode === 'draft' ? 'draft' : input.mode === 'schedule' ? 'scheduled' : 'published';
     const row = {
@@ -267,6 +280,7 @@ export async function savePost(input: SavePostInput, c?: SupabaseClient | null):
       publish_at: status === 'scheduled' ? (input.scheduledAt ?? null) : null,
       buy_button: d.buyButton,
       comments_enabled: d.allowComments,
+      ...(poster !== undefined ? { poster_path: poster } : {}),
     };
     let postId = input.postId;
     if (postId) {
