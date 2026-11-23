@@ -12,6 +12,7 @@ import { Text } from './Text';
 const alertTones = {
   info: { bg: color.bg.infoSubtle, title: color.text.info, body: color.text.secondary, icon: color.icon.info, Icon: Info },
   danger: { bg: color.bg.dangerSubtle, title: color.text.danger, body: color.text.secondary, icon: color.icon.danger, Icon: CircleAlert },
+  warning: { bg: color.bg.warningSubtle, title: color.text.warning, body: color.text.secondary, icon: color.icon.warning, Icon: CircleAlert },
   escrow: { bg: color.bg.inverse, title: color.text.inverse, body: color.text.inverse, icon: color.icon.success, Icon: Info },
 } as const;
 

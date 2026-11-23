@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { Bell, CircleX, PackageCheck, ShieldCheck, Store, Truck, type LucideIcon } from 'lucide-react-native';
+import { Ban, Bell, CircleX, PackageCheck, Scale, ShieldCheck, Store, TriangleAlert, Truck, Undo2, type LucideIcon } from 'lucide-react-native';
 import { useMemo } from 'react';
 import { FlatList, StyleSheet, View } from 'react-native';
 import { formatDayTime } from '@/domain/format';
@@ -9,6 +9,7 @@ import { pressScale } from '@/theme/motion';
 import { color, radius, space } from '@/theme/tokens';
 import { HeroIcon } from '@/ui/Feedback';
 import { PressableScale } from '@/ui/Pressable';
+import { GuestPrompt } from '@/ui/Guest';
 import { Text } from '@/ui/Text';
 import { LargeTitleBar } from '@/ui/TopAppBar';
 
@@ -41,6 +42,34 @@ function notices(state: AppState): Notice[] {
       case 'courier.collect':
         out.push({ id: e.id, at: e.at, title: `Commande ${ref} en route`, body: 'Prépare ton code de réception.', icon: Truck, tint: color.icon.info, orderId: e.orderId });
         break;
+      case 'buyer.cancel':
+        out.push({
+          id: e.id,
+          at: e.at,
+          title: `Commande ${ref} annulée`,
+          body: order?.method === 'cash' ? 'Rien n’a été payé : aucun remboursement n’est nécessaire.' : 'YA YO a lancé ton remboursement.',
+          icon: Ban,
+          tint: color.icon.secondary,
+          orderId: e.orderId,
+        });
+        break;
+      case 'buyer.dispute':
+        out.push({ id: e.id, at: e.at, title: `Litige ouvert sur ${ref}`, body: 'Les fonds restent bloqués. Décision de YA YO sous 72 h.', icon: TriangleAlert, tint: color.icon.danger, orderId: e.orderId });
+        break;
+      case 'dispute.decide':
+        out.push({
+          id: e.id,
+          at: e.at,
+          title: `Litige de ${ref} tranché`,
+          body: order?.dispute?.decision?.outcome === 'refund' ? 'Tu es remboursé.' : 'YA YO a payé le vendeur.',
+          icon: Scale,
+          tint: color.icon.info,
+          orderId: e.orderId,
+        });
+        break;
+      case 'refund.received':
+        out.push({ id: e.id, at: e.at, title: `Remboursement de ${ref} reçu`, body: 'Le montant est revenu sur ton moyen de paiement.', icon: Undo2, tint: color.icon.success, orderId: e.orderId });
+        break;
       case 'courier.confirm_delivery':
         out.push({ id: e.id, at: e.at, title: `Commande ${ref} livrée`, body: 'Le vendeur a été payé par YA YO.', icon: PackageCheck, tint: color.icon.success, orderId: e.orderId });
         break;
@@ -49,7 +78,19 @@ function notices(state: AppState): Notice[] {
   return out.reverse();
 }
 
-export default function AlertsScreen() {
+export default function AlertsTab() {
+  const { state } = useStore();
+  if (!state.auth.session)
+    return (
+      <View style={styles.screen}>
+        <LargeTitleBar title="Alertes" />
+        <GuestPrompt icon={Bell} title="Reste informé de tes commandes" body="Connecte-toi pour recevoir le suivi de tes paiements et de tes livraisons." />
+      </View>
+    );
+  return <AlertsScreen />;
+}
+
+function AlertsScreen() {
   const { state } = useStore();
   const list = useMemo(() => notices(state), [state]);
   return (

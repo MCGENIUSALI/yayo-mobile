@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { Package, PackageCheck, Scale } from 'lucide-react-native';
+import { Package, PackageCheck, Receipt, Scale } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
 import { FlatList, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
@@ -17,6 +17,7 @@ import { HeroIcon, useEnter } from '@/ui/Feedback';
 import { Segmented } from '@/ui/Form';
 import { PressableScale } from '@/ui/Pressable';
 import { PaymentStatusBadge } from '@/ui/Status';
+import { GuestPrompt } from '@/ui/Guest';
 import { Text } from '@/ui/Text';
 import { LargeTitleBar } from '@/ui/TopAppBar';
 
@@ -42,7 +43,7 @@ function OrderCard({ order, index }: { order: Order; index: number }) {
               {formatDay(order.milestones.createdAt)} · {plural(items, 'article', 'articles')} · {shop.name}
             </Text>
           </View>
-          <PaymentStatusBadge status={order.payment} method={order.method} />
+          <PaymentStatusBadge status={order.payment} method={order.method} cancellation={order.cancellation} />
         </View>
         <View style={styles.items}>
           {order.lines.slice(0, 3).map((l) => (
@@ -60,7 +61,7 @@ function OrderCard({ order, index }: { order: Order; index: number }) {
             <Text variant="priceM">{formatFC(order.total)}</Text>
           </View>
           <Button
-            label={order.delivery === 'delivered' ? 'Voir la commande' : 'Suivre la commande'}
+            label={order.delivery === 'delivered' || order.cancellation ? 'Voir la commande' : 'Suivre la commande'}
             size="S"
             onPress={open}
             style={{ width: 161 }}
@@ -78,8 +79,20 @@ const EMPTY: Record<OrderTab, { title: string; body: string; icon: typeof Packag
   disputes: { title: 'Aucun litige', body: 'Si un colis pose problème, signale-le depuis son suivi.', icon: Scale },
 };
 
-/** D1 · Mes commandes. */
-export default function OrdersScreen() {
+/** D1 · Mes commandes (A10: a guest is invited to sign in). */
+export default function OrdersTab() {
+  const { state } = useStore();
+  if (!state.auth.session)
+    return (
+      <View style={styles.screen}>
+        <LargeTitleBar title="Mes commandes" />
+        <GuestPrompt icon={Receipt} title="Tes commandes s’afficheront ici" body="Connecte-toi pour commander et suivre tes colis jusqu’à ta porte." />
+      </View>
+    );
+  return <OrdersScreen />;
+}
+
+function OrdersScreen() {
   const { state } = useStore();
   const [tab, setTab] = useState<OrderTab>('active');
   const all = useMemo(() => confirmedOrders(state), [state]);

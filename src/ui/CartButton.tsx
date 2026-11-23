@@ -1,7 +1,7 @@
-import { router } from 'expo-router';
 import { ShoppingCart } from 'lucide-react-native';
 import { StyleSheet, View } from 'react-native';
 import { useStore } from '@/store/AppStore';
+import { useOpenWithAccount } from '@/store/useRequireAccount';
 import { pressScale } from '@/theme/motion';
 import { color, HIT, radius } from '@/theme/tokens';
 import { PressableScale } from './Pressable';
@@ -10,11 +10,12 @@ import { Text } from './Text';
 /** Icon Button with badge (panier). */
 export function CartButton() {
   const { state } = useStore();
+  const open = useOpenWithAccount();
   const count = state.cart.reduce((n, l) => n + l.qty, 0);
   return (
     <PressableScale
       accessibilityLabel={`Panier, ${count} article${count > 1 ? 's' : ''}`}
-      onPress={() => router.push('/panier')}
+      onPress={() => open('/panier', 'Connecte-toi pour voir ton panier')}
       scaleTo={pressScale.icon}
       haptic="selection"
       style={styles.iconBtn}

@@ -7,7 +7,9 @@ import { detectOperator, formatLocalMsisdn } from '@/domain/paymentProvider';
 import { plural } from '@/domain/format';
 import { summarizeCart } from '@/domain/pricing';
 import type { PaymentMethod } from '@/domain/types';
+import { isServerMode } from '@/lib/supabase';
 import { useStore } from '@/store/AppStore';
+import { PAYMENT_CLOSED, placeCheckout } from '@/store/serverOrders';
 import { color, space } from '@/theme/tokens';
 import { Button } from '@/ui/Button';
 import { EscrowBanner, SummaryRow } from '@/ui/Commerce';
@@ -26,12 +28,13 @@ const METHODS: { id: PaymentMethod; title: string; subtitle: string; icon: typeo
 
 /** C3 · Paiement — étape 2 sur 3 : moyen de paiement. */
 export default function PaymentStep() {
-  const { state, dispatch } = useStore();
+  const { state, dispatch, server } = useStore();
   const toast = useToast();
   const { draft } = state;
   const summary = useMemo(() => summarizeCart(state.cart, state.promoCode), [state.cart, state.promoCode]);
   const [submittedAt, setSubmittedAt] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
+  const [serverBusy, setServerBusy] = useState(false);
   const handled = useRef<string | null>(null);
 
   // Coming back from C4 / C6 re-enables the form.
@@ -54,7 +57,7 @@ export default function PaymentStep() {
           : undefined;
 
   const submitError = submittedAt && state.lastError && state.lastError.at >= submittedAt ? state.lastError : undefined;
-  const submitting = !!submittedAt && !submitError;
+  const submitting = serverBusy || (!!submittedAt && !submitError);
 
   // React to the outcome of *this* submission only, once per error / attempt.
   useEffect(() => {
@@ -85,7 +88,7 @@ export default function PaymentStep() {
   }, [active, submitError, submittedAt, toast]);
 
   const canReuse = active && active.status !== 'succeeded';
-  if (state.cart.length === 0 && !canReuse) return <Redirect href="/panier" />;
+  if (state.cart.length === 0 && !canReuse && !serverBusy) return <Redirect href="/panier" />;
 
   const pay = () => {
     setTouched(true);
@@ -93,8 +96,42 @@ export default function PaymentStep() {
       haptic('warning');
       return;
     }
+    if (isServerMode()) {
+      void payOnServer();
+      return;
+    }
     setSubmittedAt(new Date().toISOString());
     dispatch({ type: 'checkout/pay' });
+  };
+
+  // Server mode: the base re-checks stock, prices, promo and fees, then creates the orders.
+  const payOnServer = async () => {
+    if (serverBusy) return;
+    if (draft.method !== 'cash') {
+      haptic('warning');
+      toast(PAYMENT_CLOSED.message, 'danger');
+      return;
+    }
+    setServerBusy(true);
+    const r = await placeCheckout({
+      cart: state.cart,
+      addressId: draft.addressId,
+      slotId: draft.slotId,
+      method: draft.method,
+      promoCode: state.promoCode,
+      note: draft.note,
+    });
+    if (!r.ok) {
+      setServerBusy(false);
+      haptic('warning');
+      toast(r.message, 'danger');
+      if (r.code === 'EMPTY_CART' || r.code === 'UNAVAILABLE' || r.code === 'OUT_OF_STOCK') router.dismissTo('/panier');
+      return;
+    }
+    await server.reloadOrders(r.checkoutId);
+    setServerBusy(false);
+    haptic('success');
+    router.replace('/achat/confirmee');
   };
 
   const serverError =

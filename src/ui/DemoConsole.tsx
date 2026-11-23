@@ -1,6 +1,7 @@
 import { FlaskConical } from 'lucide-react-native';
 import { StyleSheet, View } from 'react-native';
 import { nextRoleEvents, type OrderEvent, type OrderEventType } from '@/domain/orderMachine';
+import { pickupCodeFor } from '@/domain/seller';
 import type { Order } from '@/domain/types';
 import { useStore } from '@/store/AppStore';
 import { color, radius, space } from '@/theme/tokens';
@@ -11,9 +12,17 @@ const LABELS: Record<OrderEventType, { actor: 'seller' | 'courier'; label: strin
   'seller.start_preparing': { actor: 'seller', label: 'Vendeur · commencer la préparation' },
   'seller.mark_ready': { actor: 'seller', label: 'Vendeur · prêt pour la collecte' },
   'courier.accept': { actor: 'courier', label: 'Livreur · accepter la mission' },
+  'courier.decline': undefined,
+  'courier.arrive': undefined,
+  'courier.report_incident': undefined,
   'courier.collect': { actor: 'courier', label: 'Livreur · colis collecté' },
   'courier.confirm_delivery': { actor: 'courier', label: 'Livreur · saisir le code de réception' },
   'escrow.release': undefined,
+  'buyer.cancel': undefined,
+  'refund.received': undefined,
+  'buyer.dispute': undefined,
+  'buyer.dispute_note': undefined,
+  'dispute.decide': undefined,
 };
 
 /**
@@ -37,7 +46,9 @@ export function DemoConsole({ order }: { order: Order }) {
         const event: OrderEvent =
           type === 'courier.confirm_delivery'
             ? { type, code: order.receiptCode, cashCollected: order.method === 'cash' }
-            : ({ type } as OrderEvent);
+            : type === 'courier.collect'
+              ? { type, code: pickupCodeFor(order.id) }
+              : ({ type } as OrderEvent);
         return (
           <Button
             key={type}

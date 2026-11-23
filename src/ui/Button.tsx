@@ -4,7 +4,7 @@ import { color, radius, space } from '@/theme/tokens';
 import { PressableScale, type HapticKind } from './Pressable';
 import { Text } from './Text';
 
-export type ButtonVariant = 'primary' | 'accent' | 'outline' | 'ghost' | 'danger';
+export type ButtonVariant = 'primary' | 'accent' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'destructive';
 export type ButtonSize = 'L' | 'M' | 'S';
 
 export interface ButtonProps {
@@ -37,12 +37,17 @@ function palette(variant: ButtonVariant, disabled: boolean) {
       return { bg: color.bg.brand, fg: color.text.inverse, border: undefined };
     case 'accent':
       return { bg: color.bg.accent, fg: color.text.inverse, border: undefined };
+    case 'secondary':
+      return { bg: color.bg.surfaceSunken, fg: color.text.primary, border: undefined };
     case 'outline':
       return { bg: 'transparent', fg: color.text.primary, border: color.border.strong };
     case 'ghost':
       return { bg: 'transparent', fg: color.text.primary, border: undefined };
     case 'danger':
       return { bg: color.bg.dangerSubtle, fg: color.text.danger, border: undefined };
+    case 'destructive':
+      // Irreversible action (L9 "Déclarer l’échec"): filled red, white label (4.9:1).
+      return { bg: color.text.danger, fg: color.text.inverse, border: undefined };
   }
 }
 
